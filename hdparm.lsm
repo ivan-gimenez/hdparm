@@ -1,10 +1,19 @@
-Begin3
-Title:		hdparm - get/set hard disk parameters
-Version:	3.3
-Entered-date:	28FEB97
-Description:	Shell utility to access/tune ioctl features of the
-		linux hard disk and (E)IDE drivers for kernel 1.3.61+.
-		Primary use is for enabling irq-unmasking and IDE multiplemode.
+Begin4
+Title:		hdparm
+Version:	4.4
+Entered-date:	2001-11-19
+Description:	hdparm - get/set hard disk parameters for Linux IDE drives.
+		v4.5 cleanups, mostly courtesy of Maciej W. Rozycki
+		v4.4 added -b option get/set bus state
+		v4.3 use unsigned format for most stuff
+		v4.2 lots of updates, rewritten -I option
+		v4.0 no such version ever released
+		v3.9 support for ide[6-9], more cosmetics
+		v3.8 added -E, -R, and -U options; cosmetic fixes
+		v3.7 added UDMA mode display
+		v3.6 mostly cosmetic fixes, xt & ide4+ide5 support
+		v3.5 fixed udma display/compile for older kernels
+		v3.4 mostly cosmetic updates
 		v3.3 add -C, -y, -Y flags for power management
 		v3.2 flush buffer cache after -t or -T
 		v3.1 add support for "-p[6789]"
@@ -17,13 +26,12 @@ Description:	Shell utility to access/tune ioctl features of the
 		v2.4 added support for -d (DMA) flag
 		v2.3 added runtime flags for 32-bit mode; fixed -t for SCSI.
 		v2.0 adds zillions of features for the new (E)IDE driver
-Keywords:	ide eide ata ata2 performance kernel cd cdrom disk device driver
+Keywords:	ide eide ata atapi performance kernel cd cdrom disk device driver
 Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
-Primary-site:	sunsite.unc.edu /pub/Linux/system/Misc
-		14kB hdparm-3.3.tar.gz
-		1kB hdparm.lsm
-Alternate-site:	sunsite.unc.edu /pub/Linux/kernel/patches/diskdrives
-Alternate-site:	tsx-11.mit.edu /pub/linux/sources/sbin
-Copying-policy:	Freely distributable/useable, (c) Mark Lord
+Primary-site:	http://www.ibiblio.org/pub/Linux/system/hardware
+		30K hdparm-4.5.tar.gz
+		1K hdparm.lsm
+Platforms:	Linux, kernels 2.2 through 2.4 (most earlier versions also)
+Copying-policy:	BSD License
 End

@@ -1,0 +1,8 @@
+hdparm for Debian
+-----------------
+
+To get the best performance out of your hard drive turn on DMA support in the
+kernel and enable 32bit IO (-c) and multiple sector I/O (-m) with hdparm. You
+can find out the number to use for -m by using -i and reading MaxMultSect.
+
+ -- Christopher L Cheney <ccheney@debian.org>, Wed, 21 Nov 2001 15:51:14 -0600

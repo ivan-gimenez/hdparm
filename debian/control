@@ -1,13 +1,14 @@
 Source: hdparm
 Section: admin
-Priority: extra
-Maintainer: Steve Dunham <dunham@cps.msu.edu>
-Standards-Version: 2.1.0.0
+Priority: optional
+Maintainer: Christopher L Cheney <ccheney@debian.org>
+Build-Depends: debhelper (>> 3.0.0)
+Standards-Version: 3.5.6.0
 
 Package: hdparm
 Architecture: any
 Depends: ${shlibs:Depends}
+Replaces: apmd (<= 3.0.2-1.15)
 Description: Tune hard disk parameters for high performance.
- Shell utility to access/tune ioctl features of the
- linux hard disk and (E)IDE drivers for kernel 1.1.65+.
+ get/set hard disk parameters for Linux IDE drives.
  Primary use is for enabling irq-unmasking and IDE multiplemode.
