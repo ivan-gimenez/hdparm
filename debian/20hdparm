@@ -19,9 +19,9 @@
 
 set -e
 
-# The APMD_DRIVE setting specifies the drive to be changed.  Set
+# The APMD_DRIVES setting specifies the drives to be changed.  Set
 # this to an empty string to disable any changes.
-APMD_DRIVE=
+#APMD_DRIVES=
 
 # The spindown timeout is set to the value of APMD_SPINDOWN when the
 # computer is running on battery power.  When the computer is on AC
@@ -35,20 +35,28 @@ APMD_SPINDOWN=18
 HDPARM=/sbin/hdparm
 [ -x "${HDPARM}" ] || exit 0
 
-[ "${APMD_DRIVE}" ] || exit 0
-[ -b "${APMD_DRIVE}" ] || exit 0
+[ -n "${APMD_DRIVES}" ] || exit 0
+
+for DRIVE in $APMD_DRIVES; do
+  [ -b "${DRIVE}" ] || exit 0
+done
+
 [ "${APMD_SPINDOWN}" -gt 0 ] || exit 0
 
 power_conserve ()
 {
     # Set IDE hard disk spindown time to a short time.
-    "${HDPARM}" -q -S "${APMD_SPINDOWN}" "${APMD_DRIVE}" || true
+    for DRIVE in $APMD_DRIVES; do
+      "${HDPARM}" -q -S "${APMD_SPINDOWN}" "${DRIVE}" || true
+    done
 }
 
 power_performance ()
 {
     # Disable IDE hard disk spindown.
-    "${HDPARM}" -q -S 0 "${APMD_DRIVE}" || true
+    for DRIVE in $APMD_DRIVES; do
+      "${HDPARM}" -q -S 0 "${DRIVE}" || true
+    done
 }
 
 choose_power ()

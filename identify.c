@@ -3,6 +3,14 @@
 #include <errno.h>
 #include <string.h>
 #include <linux/types.h>
+#include <endian.h>
+
+#if __BYTE_ORDER == __BIG_ENDIAN
+#define __USE_XOPEN
+#endif
+
+#include <unistd.h>
+#include "hdparm.h"
 
 /* device types */
 /* ------------ */
@@ -19,21 +27,21 @@
 #define TRACK_BYTES		4   /* number of bytes/track (ATA-1) */
 #define SECT_BYTES		5   /* number of bytes/sector (ATA-1) */
 #define LSECTS			6   /* number of logical sectors/track */
-#define START_SERIAL_NUM        10  /* ASCII serial number */
-#define END_SERIAL_NUM          19
+#define START_SERIAL            10  /* ASCII serial number */
+#define LENGTH_SERIAL           10  /* 10 words (20 bytes or characters) */
 #define BUF_TYPE		20  /* buffer type (ATA-1) */
 #define BUF_SIZE		21  /* buffer size (ATA-1) */
-#define RW_LONG			22  /* extra bytes in R/W LONG command */
+#define RW_LONG			22  /* extra bytes in R/W LONG cmd ( < ATA-4)*/
 #define START_FW_REV            23  /* ASCII firmware revision */
-#define END_FW_REV		26 
-#define START_MODEL_NUM		27  /* ASCII model number */
-#define END_MODEL_NUM		46
+#define LENGTH_FW_REV		 4  /*  4 words (8 bytes or characters) */
+#define START_MODEL    		27  /* ASCII model number */
+#define LENGTH_MODEL    	20  /* 20 words (40 bytes or characters) */
 #define SECTOR_XFER_MAX	        47  /* r/w multiple: max sectors xfered */
-#define DWORD_IO		48  /* can do double-word IO (ATA-1) */
+#define DWORD_IO		48  /* can do double-word IO (ATA-1 only) */
 #define CAPAB_0			49  /* capabilities */
 #define CAPAB_1			50
 #define PIO_MODE		51  /* max PIO mode supported (obsolete)*/
-#define DMA_MODE		52  /* max Singleword DMA mode supported (obsolete)*/
+#define DMA_MODE		52  /* max Singleword DMA mode supported (obs)*/
 #define WHATS_VALID		53  /* what fields are valid */
 #define LCYLS_CUR		54  /* current logical cylinders */
 #define LHEADS_CUR		55  /* current logical heads */
@@ -69,15 +77,23 @@
 				    /* time to complete security erase */
 #define ERASE_TIME		89  /*   - ordinary */
 #define ENH_ERASE_TIME		90  /*   - enhanced */
-#define ADV_PWR			91  /* current advanced power management level*/
+#define ADV_PWR			91  /* current advanced power management level
+				       in low byte, 0x40 in high byte. */  
 #define PSWD_CODE		92  /* master password revision code	*/
 #define HWRST_RSLT		93  /* hardware reset result */
-#define RM_STAT 		127  /* removable media status notification feature set support */
-#define SECU_STATUS		128  /* security status */
-#define START_VENDOR_SPECIFIC	129  /* vendor specific */
-#define END_VENDOR_SPECIFIC	159
-#define CFA_PWR_MODE		160  /* CFA power mode 1 */
-#define INTEGRITY		255  /* integrity word */
+#define ACOUSTIC  		94  /* acoustic mgmt values ( >= ATA-6) */
+#define LBA_LSB			100 /* LBA: maximum.  Currently only 48 */
+#define LBA_MID			101 /*      bits are used, but addr 103 */
+#define LBA_48_MSB		102 /*      has been reserved for LBA in */
+#define LBA_64_MSB		103 /*      the future. */
+#define RM_STAT 		127 /* removable media status notification feature set support */
+#define SECU_STATUS		128 /* security status */
+#define CFA_PWR_MODE		160 /* CFA power mode 1 */
+#define START_MEDIA             176 /* media serial number */
+#define LENGTH_MEDIA            20  /* 20 words (40 bytes or characters)*/
+#define START_MANUF             196 /* media manufacturer I.D. */
+#define LENGTH_MANUF            10  /* 10 words (20 bytes or characters) */
+#define INTEGRITY		255 /* integrity word */
 
 /* bit definitions within the words */
 /* -------------------------------- */
@@ -91,9 +107,9 @@
 
 /* word 0: gen_config */
 #define NOT_ATA			0x8000	
-#define NOT_ATAPI		0x4000	
+#define NOT_ATAPI		0x4000	/* (check only if bit 15 == 1) */
 #define MEDIA_REMOVABLE		0x0080
-#define DRIVE_NOT_REMOVABLE	0x0040
+#define DRIVE_NOT_REMOVABLE	0x0040  /* bit obsoleted in ATA 6 */
 #define INCOMPLETE		0x0004
 #define CFA_SUPPORT_VAL		0x848a	/* 848a=CFA feature set support */
 #define DRQ_RESPONSE_TIME	0x0060
@@ -200,18 +216,13 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 #define OK_W54_58		0x0001  /* current cyl, head, sector, cap. info valid */
 
 /*word 63,88: dma_mode, ultra_dma_mode*/
-#define MODE_SEL		0xff00
-#define MODE4_SEL		0x1000  /* 1=seleced mode */
-#define MODE3_SEL		0x0800  /* 1=seleced mode */
-#define MODE2_SEL		0x0400  /* 1=seleced mode */
-#define MODE1_SEL		0x0200  /* 1=seleced mode */
-#define MODE0_SEL		0x0100  /* 1=seleced mode */
-#define MODE_SUP		0x00ff
-#define MODE_MAX		7
+#define MODE_MAX		7	/* bit definitions force udma <=7 (when
+					 * udma >=8 comes out it'll have to be
+					 * defined in a new dma_mode word!) */
 
 /* word 64: PIO transfer modes */
-#define PIO_SUP			0x0003
-#define PIO_MODE_MAX		10
+#define PIO_SUP			0x00ff  /* only bits 0 & 1 are used so far,  */
+#define PIO_MODE_MAX		8       /* but all 8 bits are defined        */
 
 /* word 75: queue_depth */
 #define DEPTH_BITS		0x001f  /* bits used for queue depth */
@@ -220,7 +231,7 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 /* NOVAL_0 or  NOVAL_1 means device does not report version */
 
 /* word 81: minor version number */
-#define MINOR_MAX		0x17
+#define MINOR_MAX		0x1f
 const char *minor_str[] = {				/* word 81 value: */
 	"device does not report version",		/* 0x0000	*/
 	"ATA-1 X3T9.2 781D prior to revision 4",	/* 0x0001	*/
@@ -241,12 +252,19 @@ const char *minor_str[] = {				/* word 81 value: */
 	"ATA/ATAPI-4 T13 1153D revision 18",		/* 0x0010	*/
 	"ATA/ATAPI-4 T13 1153D revision 15",		/* 0x0011	*/
 	"ATA/ATAPI-4 published, ANSI NCITS 317-1998",	/* 0x0012	*/
-	"reserved",					/* 0x0013	*/
+	"ATA/ATAPI-5 T13 1321D revision 3",
 	"ATA/ATAPI-4 T13 1153D revision 14",		/* 0x0014	*/
 	"ATA/ATAPI-5 T13 1321D revision 1",		/* 0x0015	*/
-	"reserved",					/* 0x0016	*/
+	"ATA/ATAPI-5 published, ANSI NCITS 340-2000",	/* 0x0016	*/
 	"ATA/ATAPI-4 T13 1153D revision 17",		/* 0x0017	*/
-	"reserved"					/* 0x0018-0xfffe*/
+	"ATA/ATAPI-6 T13 1410D revision 0",		/* 0x0018	*/
+	"ATA/ATAPI-6 T13 1410D revision 3a",		/* 0x0019	*/
+	"Reserved",					/* 0x001a	*/
+	"ATA/ATAPI-6 T13 1410D revision 2",		/* 0x001b	*/
+	"ATA/ATAPI-6 T13 1410D revision 1",		/* 0x001c	*/
+	"reserved"					/* 0x001d	*/
+	"reserved"					/* 0x001e	*/
+	"reserved"					/* 0x001f-0xfffe*/
 };
 const char actual_ver[] = { 
 			/* word 81 value: */
@@ -269,17 +287,26 @@ const char actual_ver[] = {
 	4,		/* 0x0010	WARNING:   that one,      	*/
 	4,		/* 0x0011	WARNING:   change this one	*/
 	4,		/* 0x0012	WARNING:   too!!!        	*/
-	0,		/* 0x0013	WARNING:	*/
+	5,		/* 0x0013	WARNING:	*/
 	4,		/* 0x0014	WARNING:	*/
 	5,		/* 0x0015	WARNING:	*/
-	0,		/* 0x0016	WARNING:	*/
+	5,		/* 0x0016	WARNING:	*/
 	4,		/* 0x0017	WARNING:	*/
-	0		/* 0x0018-0xfffe    		*/
+	6,		/* 0x0018	WARNING:	*/
+	6,		/* 0x0019	WARNING:	*/
+	0,		/* 0x001a	WARNING:	*/
+	6,		/* 0x001b	WARNING:	*/
+	6,		/* 0x001c	WARNING:	*/
+	0,		/* 0x001d	WARNING:	*/
+	0,		/* 0x001e	WARNING:	*/
+	0		/* 0x001f-0xfffe    		*/
 };
 
 /* words 82-84: cmds/feats supported */
-#define CMDS_W83		0x01ff  /* word 83: defined command locations*/
 #define CMDS_W82		0x77ff  /* word 82: defined command locations*/
+#define CMDS_W83		0x3fff  /* word 83: defined command locations*/
+#define CMDS_W84		0x002f  /* word 83: defined command locations*/
+#define SUPPORT_48_BIT		0x0400  
 #define NUM_CMD_FEAT_STR	48
 
 const char *cmd_feat_str[] = { 
@@ -291,9 +318,9 @@ const char *cmd_feat_str[] = {
 	"Host Protected Area feature set",	/* word 82 bit 10 */
 	"DEVICE RESET cmd",			/* word 82 bit  9 */
 	"SERVICE interrupt",			/* word 82 bit  8 */
-	"release interrupt",			/* word 82 bit  7 */
-	"look-ahead",				/* word 82 bit  6 */
-	"write cache",				/* word 82 bit  5 */
+	"Release interrupt",			/* word 82 bit  7 */
+	"Look-ahead",				/* word 82 bit  6 */
+	"Write cache",				/* word 82 bit  5 */
 	"PACKET command feature set",		/* word 82 bit  4 */
 	"Power Management feature set",		/* word 82 bit  3 */
 	"Removable Media feature set",		/* word 82 bit  2 */
@@ -302,13 +329,13 @@ const char *cmd_feat_str[] = {
 						/* --------------*/
 	"",					/* word 83 bit 15: !valid bit */
 	"",					/* word 83 bit 14:  valid bit */
-	"",					/* word 83 bit 13:  reserved */
-	"",					/* word 83 bit 12:  reserved */
-	"",					/* word 83 bit 11:  reserved */
-	"",					/* word 83 bit 10:  reserved */
-	"",					/* word 83 bit  9:  reserved */
+	"FLUSH CACHE EXT command",		/* word 83 bit 13 */
+	"Mandatory FLUSH CACHE command ",	/* word 83 bit 12 */
+	"Device Configuration Overlay feature set ",
+	"48-bit Address feature set ",		/* word 83 bit 10 */
+	"Automatic Acoustic Management feature set ",
 	"SET MAX security extension",		/* word 83 bit  8 */
-	"Address offset used (large drive)",	/* word 83 bit  7 */
+	"Address Offset Reserved Area Boot",	/* word 83 bit  7 */
 	"SET FEATURES subcommand required to spinup after power up",
 	"Power-Up In Standby feature set",	/* word 83 bit  5 */
 	"Removable Media Status Notification feature set",
@@ -327,12 +354,12 @@ const char *cmd_feat_str[] = {
 	"",					/* word 84 bit  8:  reserved */
 	"",					/* word 84 bit  7:  reserved */
 	"",					/* word 84 bit  6:  reserved */
-	"",					/* word 84 bit  5:  reserved */
+	"General Purpose Logging feature set",	/* word 84 bit  5 */
 	"",					/* word 84 bit  4:  reserved */
-	"",					/* word 84 bit  3:  reserved */
-	"",					/* word 84 bit  2:  reserved */
-	"",					/* word 84 bit  1:  reserved */
-	""					/* word 84 bit  0:  reserved */
+	"Media Card Pass Through Command feature set ",
+	"Media serial number ",			/* word 84 bit  2 */
+	"SMART self-test ",			/* word 84 bit  1 */
+	"SMART error logging "			/* word 84 bit  0 */
 };
 
 
@@ -381,14 +408,8 @@ const char *secu_str[] = {
 #define SIG			0x00ff  /* signature location */
 #define SIG_VAL			0x00A5  /* signature value */
 
-/* Compiler note:
- * 	For some totally bizarre reason, the compiler won't pass an unsigned
- *	short (__u16 == unsigned short on my machine) to an unsigned short in
- *	a function without a type conversion.  It doesn't have that problem
- *	with unsigned int so I changed mode_loop to use __u32 instead of __u16.
- *	TBD: change it back if/when the compiler gets fixed.
- */
-__u8 mode_loop(__u32 mode_sup, __u32 mode_sel, int cc, __u8 *have_mode);
+__u8 mode_loop(__u16 mode_sup, __u16 mode_sel, int cc, __u8 *have_mode);
+void print_ascii(__u16 *p, __u8 length);
 
 /* our main() routine: */
 void identify (__u16 *id_supplied, const char *devname)
@@ -397,11 +418,12 @@ void identify (__u16 *id_supplied, const char *devname)
 	char *id_file = NULL, fmt[]="/proc/ide/%s/identify";
 	FILE *fl;
 	__u16 val[256], ii, jj, kk;
-	__u8  like_std = 1, std = 0;
+	__u16 like_std = 1, std = 0, min_std = 0xffff;
 	__u16 dev = NO_DEV, eqpt = NO_DEV;
 	__u8  have_mode = 0, err_dma = 0;
 	__u8  chksum = 0;
-	__u32 ll, mm;
+	__u32 ll, mm, nn;
+	__u64 bb, bbbig; /* (:) */
 
 	if (id_supplied) {
 		memcpy(val, id_supplied, sizeof(val));
@@ -416,6 +438,7 @@ void identify (__u16 *id_supplied, const char *devname)
      			perror(id_file);
 			exit(errno);
 		}
+		/* calculate checksum over all bytes */
 		for(ii = GEN_CONFIG; ii<=INTEGRITY; ii++) {
 			unsigned int scratch;
 			if(1 != fscanf(fl,"%04x",&scratch)) break;
@@ -434,9 +457,7 @@ void identify (__u16 *id_supplied, const char *devname)
 	printf("\n");
 	if(!(val[GEN_CONFIG] & NOT_ATA)) {
 		dev = ATA_DEV;
-		if(val[GEN_CONFIG] & DRIVE_NOT_REMOVABLE)
-			printf("non-");
-		printf("removable ATA device, with ");
+		printf("ATA device, with ");
 	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL) {
 		dev = ATA_DEV;
 		like_std = 4;
@@ -448,7 +469,7 @@ void identify (__u16 *id_supplied, const char *devname)
 		like_std = 3;
 	} else {
 		printf("Unknown device type:\n\tbits 15&14 of general configuration word 0 both set to 1.\n");
-		exit(0);
+		exit(EINVAL);
 	}
 	if(!(val[GEN_CONFIG] & MEDIA_REMOVABLE))
 		printf("non-");
@@ -457,7 +478,7 @@ void identify (__u16 *id_supplied, const char *devname)
 
 	/* Info from the specific configuration word says whether or not the
 	 * ID command completed correctly.  It is only defined, however in
-	 * ATA/ATAPI-5; it is reserved (value theoretically 0) in prior 
+	 * ATA/ATAPI-5 & 6; it is reserved (value theoretically 0) in prior 
 	 * standards.  Since the values allowed for this word are extremely
 	 * specific, it should be safe to check it now, even though we don't
 	 * know yet what standard this device is using.
@@ -467,85 +488,77 @@ void identify (__u16 *id_supplied, const char *devname)
 	   	like_std = 5;
 		if((val[CONFIG]==STBY_NID_VAL) || (val[CONFIG]==STBY_ID_VAL))
 			printf("powers-up in standby; SET FEATURES subcmd spins-up.\n");
-		if((val[CONFIG]==STBY_NID_VAL) || (val[CONFIG]==PWRD_NID_VAL) ||
+		if(((val[CONFIG]==STBY_NID_VAL) || (val[CONFIG]==PWRD_NID_VAL)) &&
 		   (val[GEN_CONFIG] & INCOMPLETE)) 
 			printf("\n\tWARNING: ID response incomplete.\n\tWARNING: Following data may be incorrect.\n\n");
 	}
 
 	/* output the model and serial numbers and the fw revision */
-	if(val[START_MODEL_NUM]) {
-		printf("\tModel Number:\t\t");
-		for(ii = START_MODEL_NUM; ii<=END_MODEL_NUM; ii++) {
-	        	printf("%c%c",(char)0x00ff&(val[ii]>>8),(char)val[ii]&0x00ff);
-		}
-		printf("\n");
+	if(val[START_MODEL]) {
+		printf("\t%-20s","Model Number:");
+		print_ascii(&val[START_MODEL], LENGTH_MODEL);
 	}
-	if(val[START_SERIAL_NUM]) {
-		printf("\tSerial Number:\t\t");
-		for(ii = START_SERIAL_NUM; ii<=END_SERIAL_NUM; ii++) {
-			printf("%c%c",(char)0x00ff&(val[ii]>>8),(char)val[ii]&0x00ff);
-		}
-		printf("\n");
+	if(val[START_SERIAL]) {
+		printf("\t%-20s","Serial Number:");
+		print_ascii( &val[START_SERIAL], LENGTH_SERIAL);
 	}
 	if(val[START_FW_REV]) {
-		printf("\tFirmware Revision:\t");
-		for(ii = START_FW_REV; ii<=END_FW_REV; ii++) {
-			printf("%c%c",(char)0x00ff&(val[ii]>>8),(char)val[ii]&0x00ff);
-		}
-		printf("\n");
+		printf("\t%-20s","Firmware Revision:");
+		print_ascii(&val[START_FW_REV], LENGTH_FW_REV);
+	}
+	if(val[START_MEDIA]) {
+		printf("\t%-20s","Media Serial Num:");
+		print_ascii(&val[START_MEDIA], LENGTH_MEDIA);
+	}
+	if(val[START_MANUF]) {
+		printf("\t%-20s","Media Manufacturer:");
+		print_ascii(&val[START_MANUF], LENGTH_MANUF);
 	}
 
 	/* major & minor standards version number (Note: these words were not
 	 * defined until ATA-3 & the CDROM std uses different words.) */
 	printf("Standards:");
 	if(eqpt != CDROM) {
-		if(val[MINOR] && (val[MINOR] <=MINOR_MAX)){
-			printf("\n\tUsed: ");
-			std = actual_ver[val[MINOR]];
-			printf("%s ",minor_str[val[MINOR]]);
+		if(val[MINOR] && (val[MINOR] <= MINOR_MAX)){
 			if(like_std < 3) like_std = 3;
+			std = actual_ver[val[MINOR]];
+			if(std) {
+				printf("\n\tUsed: ");
+				printf("%s ",minor_str[val[MINOR]]);
+			}
 		}
+		/* looks like when they up-issue the std, they obsolete one;
+		 * thus, only the newest 4 issues need be supported. (That's 
+		 * what "kk" and "min_std" are all about.) */
 		if(val[MAJOR] && (val[MAJOR] !=NOVAL_1)) {
 			printf("\n\tSupported: ");
-			jj = val[MAJOR] >> 1;
-			for(ii = 1; ii <15; ii++) {
-				if(jj & 0x0001) {
+			jj = val[MAJOR] << 1;
+			kk = like_std >4 ? like_std-4: 0;
+			for(ii = 14; (ii >0)&&(ii>kk); ii--) {
+				if(jj & 0x8000) {
 					printf("%u ", ii);
-					if(like_std < ii) like_std = ii;
+					if(like_std < ii) {
+						like_std = ii;
+						kk = like_std >4 ? like_std-4: 0;
+					}
+					if(min_std > ii) min_std = ii;
 				}
-				jj >>= 1;
+				jj <<= 1;
 			}
 			if(like_std < 3) like_std = 3;
 		}
-	} else {
-		printf("\n");
-		if(val[CDR_MINOR]) {
-			printf("\tUsed: ");
-			if(val[CDR_MINOR] == 9) 
-				printf("ATAPI for CD-ROMs, SFF-8020i, r2.5\n");
-			else
-				printf("unrecognised.\n");
-		}
-		if(val[CDR_MAJOR] && (val[CDR_MAJOR] !=NOVAL_1)) {
-			printf("\tSupported: CD-ROM ATAPI");
-			jj = val[CDR_MAJOR] >> 1;
-			for(ii = 1; ii <15; ii++) {
-				if(jj & 0x0001) {
-					printf("-%u ", ii);
-				}
-				jj >>= 1;
-			}
-			printf("\n");
-		}
-	}
-
-	/* Figure out what standard the device is using if it hasn't told
-	 * us.  If we know the std, check if the device is using any of
-	 * the words from the next level up.  It happens.
-	 */
-	if(like_std < std) like_std = std;
-	if(eqpt != CDROM) {
-		if(((std == 4) || (!std && (like_std < 5))) &&
+		/* Figure out what standard the device is using if it hasn't told
+		 * us.  If we know the std, check if the device is using any of
+		 * the words from the next level up.  It happens.
+		 */
+		if(like_std < std) like_std = std;
+		if(((std == 5) || (!std && (like_std < 6))) &&
+		   ( (((val[CMDS_SUPP_1] & VALID) == VALID_VAL) &&
+		     ((val[CMDS_SUPP_1] & CMDS_W83) > 0x00ff)) ||
+		    (((val[CMDS_SUPP_2] & VALID) == VALID_VAL) &&
+		     (val[CMDS_SUPP_2] & CMDS_W84) ) ) ) {
+			like_std = 6;
+		}  else	if(((std == 4) || (!std && (like_std < 5))) &&
 		   ((((val[INTEGRITY] & SIG) == SIG_VAL) && !chksum) ||
 		    ((val[HWRST_RSLT] & VALID) == VALID_VAL) ||
 		    (((val[CMDS_SUPP_1] & VALID) == VALID_VAL) &&
@@ -567,12 +580,36 @@ void identify (__u16 *id_supplied, const char *devname)
 		   	    (val[WHATS_VALID] & OK_W64_70)) ) {
 			like_std = 2;
 		}
-		if(!std)
+		if(!std) {
 			printf("\n\tLikely used: %u\n",like_std);
-		else if(like_std > std) {
+		} else if(like_std > std) {
 			printf("& some of %u\n",like_std);
 		} else  printf("\n");
+	} else {
+		/* TBD: do CDROM stuff more thoroughly.  For now... */
+	  	kk = 0;
+		if(val[CDR_MINOR] == 9) {
+			kk = 1;
+			printf("\n\tUsed: ATAPI for CD-ROMs, SFF-8020i, r2.5");
+		}
+		if(val[CDR_MAJOR] && (val[CDR_MAJOR] !=NOVAL_1)) {
+			kk = 1;
+			printf("\n\tSupported: CD-ROM ATAPI");
+			jj = val[CDR_MAJOR] >> 1;
+			for(ii = 1; ii <15; ii++) {
+				if(jj & 0x0001) {
+					printf("-%u ", ii);
+				}
+				jj >>= 1;
+			}
+		}
+		if(!kk) printf("\n\tLikely used CD-ROM ATAPI-1\n");
+		else	printf("\n");
+		/* the cdrom stuff is more like ATA-2 than anything else, so: */
+		like_std = 2;
 	}
+
+	if(min_std == 0xffff) min_std = like_std > 4 ? like_std - 3 : 1;
 
 	printf("Configuration:\n");
 	/* more info from the general configuration word */
@@ -598,23 +635,59 @@ void identify (__u16 *id_supplied, const char *devname)
 		default : printf("Unknown\n"); break;
 		}
 	} else {
-		jj = val[WHATS_VALID] & OK_W54_58;
-		printf("\tLogical\t\tmax\tcurrent\n");
-		printf("\tcylinders\t%u\t%u\n",val[LCYLS],jj?val[LCYLS_CUR]:0);
-		printf("\theads\t\t%u\t%u\n",val[LHEADS],jj?val[LHEADS_CUR]:0);
-		printf("\tsectors/track\t%u\t%u\n",val[LSECTS],jj?val[LSECTS_CUR]:0);
-		printf("\tbytes/track:\t%u",val[TRACK_BYTES]);
-		if(like_std != 1) printf("\t\t(obsolete)\n");
-		else		  printf("\n");
-		printf("\tbytes/sector:\t%u",val[SECT_BYTES]);
-		if(like_std != 1) printf("\t\t(obsolete)\n");
-		else		  printf("\n");
-		if(jj) {
-			mm = (__u32)val[CAPACITY_MSB] << 16 | val[CAPACITY_LSB];
-			printf("\tcurrent sector capacity: %u\n",mm);
-		} 
-		ll = (__u32)val[LBA_SECTS_MSB] << 16 | val[LBA_SECTS_LSB];
-		printf("\tLBA user addressable sectors = %u\n",ll);
+	  	/* addressing...CHS? See section 6.2 of ATA specs 4 or 5 */
+		ll = 0; mm = 0; bb = 0; bbbig = 0;
+		if (val[CAPAB_0] & LBA_SUP)
+			ll = (__u32)val[LBA_SECTS_MSB] << 16 | val[LBA_SECTS_LSB];
+	  	if ( (ll > 0x00FBFC10) && (!val[LCYLS])) {
+		  	printf("\tCHS addressing not supported\n");
+		} else {
+			jj = val[WHATS_VALID] & OK_W54_58;
+			printf("\tLogical\t\tmax\tcurrent\n");
+			printf("\tcylinders\t%u\t%u\n",val[LCYLS],jj?val[LCYLS_CUR]:0);
+			printf("\theads\t\t%u\t%u\n",val[LHEADS],jj?val[LHEADS_CUR]:0);
+			printf("\tsectors/track\t%u\t%u\n",val[LSECTS],jj?val[LSECTS_CUR]:0);
+			if(jj)
+				bb = (__u64)val[LCYLS_CUR] * val[LHEADS_CUR] * val[LSECTS_CUR];
+			else
+				bb = (__u64)val[LCYLS] * val[LHEADS] * val[LSECTS];
+			printf("\t--\n");
+			if((min_std == 1) && (val[TRACK_BYTES] || val[SECT_BYTES])) {
+				printf("\tbytes/track: %u",val[TRACK_BYTES]);
+				printf("\tbytes/sector: %u\n",val[SECT_BYTES]);
+			}
+			if(jj) {
+				mm = (__u32)val[CAPACITY_MSB] << 16 | val[CAPACITY_LSB];
+				/* ATA-1 is ambiguous on ordering of words 57 & 58 */
+				if(like_std < 3) {
+					nn = (__u32)val[CAPACITY_LSB] << 16 | val[CAPACITY_MSB];
+					/* check Endian of capacity bytes */
+					if(abs(mm - bb) > abs(nn - bb))
+						mm = nn;
+				}
+				printf("\tCHS current addressable sectors:%11u\n",mm);
+			} 
+		}
+		if (val[CAPAB_0] & LBA_SUP) {
+		/* LBA addressing */
+			printf("\tLBA    user addressable sectors:%11u\n",ll);
+			if( ((val[CMDS_SUPP_1] & VALID) == VALID_VAL) &&
+			     (val[CMDS_SUPP_1] & SUPPORT_48_BIT) ) {
+				bbbig = (__u64)val[LBA_64_MSB] << 48 | 
+				        (__u64)val[LBA_48_MSB] << 32 |
+				        (__u64)val[LBA_MID] << 16 | 
+					val[LBA_LSB] ;
+				printf("\tLBA48  user addressable sectors:%11llu\n", (unsigned long long)bbbig);
+			}
+		}
+		if (!bbbig) bbbig = (__u64)(ll>mm ? ll : mm); /* # 512 byte blocks */
+		if (!bbbig) bbbig = bb;
+		printf("\tdevice size with M = 1024*1024: %11llu MBytes\n", (unsigned long long)(bbbig>>11));
+		bbbig = (bbbig<<9)/1000000;
+		printf("\tdevice size with M = 1000*1000: %11llu MBytes ", (unsigned long long)bbbig);
+		if(bbbig > 1000) printf("(%llu GB)\n", (unsigned long long)(bbbig/1000));
+		else printf("\n");
+
 	}
 
 	/* hw support of commands (capabilities) */
@@ -633,15 +706,25 @@ void identify (__u16 *id_supplied, const char *devname)
 		if(val[CAPAB_0] & IORDY_OFF) printf("(can");
 		else			     printf("(cannot");
 		printf(" be disabled)");
-	} else printf("no IORDY"); 
+	} else {
+		printf("IORDY not likely"); 
+	}
 	printf("\n");
+	if((like_std == 1) && val[BUF_TYPE]) {
+		kk = val[BUF_TYPE];
+		printf("\tBuffer type: %04x: ",kk);
+		if (kk < 2) 	printf("single port, single-sector");
+		else		printf("dual port, multi-sector");
+		if (kk > 2)	printf(" with read caching ability");
+		printf("\n");
+	}
 	jj = 0;
-	if(val[BUF_SIZE] && (val[BUF_SIZE] != NOVAL_1)) {
+	if((min_std == 1) && (val[BUF_SIZE] && (val[BUF_SIZE] != NOVAL_1))) {
 		printf("\tBuffer size: %.1fkB",(float)val[BUF_SIZE]/2);
 		jj = 1;
 	}
-	if(val[RW_LONG]) {
-		printf("\tECC bytes: %u",val[RW_LONG]);
+	if((min_std < 4) && (val[RW_LONG])) {
+		printf("\tbytes avail on r/w long: %u",val[RW_LONG]);
 		jj = 1;
 	}
 	if((eqpt != CDROM) && (like_std > 3)) {
@@ -651,13 +734,12 @@ void identify (__u16 *id_supplied, const char *devname)
 	if(jj) printf("\n");
 	if(dev == ATA_DEV) {
 		if(like_std == 1) {
-			if(val[BUF_TYPE]) printf("\tBuffer type: %04x.",val[BUF_TYPE]);
 			printf("\tCan");
 			if(!val[DWORD_IO]) printf("not");
 			printf(" perform double-word IO\n");
 		} else {
 			printf("\tStandby timer values: spec'd by ");
-			if(val[CAPAB_0] & STD_STBY) printf("standard");
+			if(val[CAPAB_0] & STD_STBY) printf("Standard");
 			else 			    printf("Vendor");
 			if((like_std > 3) && ((val[CAPAB_1] & VALID) == VALID_VAL)) {
 			   	if(val[CAPAB_1] & MIN_STANDBY_TIMER) printf(", with ");
@@ -665,7 +747,7 @@ void identify (__u16 *id_supplied, const char *devname)
 				printf("device specific minimum\n");
 			} else  printf("\n");
 		}
-		printf("\tr/w multiple sector transfer: ");
+		printf("\tR/W multiple sector transfer: ");
 		if((like_std < 3) && !(val[SECTOR_XFER_MAX] & SECTOR_XFER)) {
 			printf("not supported\n");
 		} else {
@@ -675,8 +757,23 @@ void identify (__u16 *id_supplied, const char *devname)
 				printf("%u\n",val[SECTOR_XFER_CUR] & SECTOR_XFER);
 			else	printf("?\n");
 		}
-		if((like_std > 3) && (val[ADV_PWR])){
-			printf("\tAdvanced power management level: %u\n",val[ADV_PWR]);
+		if((like_std > 3) && (val[CMDS_SUPP_1] & 0x0008)) {
+			/* We print out elsewhere whether the APM feature is enabled or
+			   not.  If it's not enabled, let's not repeat the info; just print
+			   nothing here. */
+			printf("\tAdvanced power management level: ");
+			if ( (val[ADV_PWR] & 0xFF00) == 0x4000 ) {
+				__u8 apm_level = val[ADV_PWR] & 0x00FF;
+
+				printf("%u (0x%x)\n", apm_level, apm_level);
+			} else {
+				printf("unknown setting (0x%04x)\n", val[ADV_PWR]);
+			}
+		}
+		if(like_std > 5) {
+			if(val[ACOUSTIC]) {
+				printf("\tRecommended acoustic management value: %u, current value: %u\n", (val[ACOUSTIC] >> 8) & 0x00ff, val[ACOUSTIC] & 0x00ff);
+			}
 		}
 	} else { /* ATAPI */
 		if(eqpt != CDROM) {
@@ -695,21 +792,24 @@ void identify (__u16 *id_supplied, const char *devname)
 	if(!(val[CAPAB_0] & DMA_SUP)) {
 		printf("not supported\n");
 	} else {
-		if(val[DMA_MODE] && !val[SINGLE_DMA] && !val[MULTI_DMA]) 
-			printf(" sdma%u\n",(val[DMA_MODE] & MODE) >> 8);
-		if(val[SINGLE_DMA]) {
-			jj = val[SINGLE_DMA];   kk = val[SINGLE_DMA] >> 8;
-			err_dma += mode_loop((__u32)jj,(__u32)kk,'s',&have_mode);
+		if(val[DMA_MODE] && !val[SINGLE_DMA] && !val[MULTI_DMA]) {
+			printf("sdma%u",(val[DMA_MODE] & MODE) >> 8);
+		} else {
+			if(val[SINGLE_DMA]) {
+				jj = val[SINGLE_DMA];   kk = val[SINGLE_DMA] >> 8;
+				err_dma += mode_loop(jj,kk,'s',&have_mode);
+			}
+			if(val[MULTI_DMA]) {
+				jj = val[MULTI_DMA];   kk = val[MULTI_DMA] >> 8;
+				err_dma += mode_loop(jj,kk,'m',&have_mode);
+			}
+			if((val[WHATS_VALID] & OK_W88) && val[ULTRA_DMA]) {
+				jj = val[ULTRA_DMA];   kk = val[ULTRA_DMA] >> 8;
+				err_dma += mode_loop(jj,kk,'u',&have_mode);
+			}
+			if(err_dma || !have_mode)
+				printf("(?)");
 		}
-		if(val[MULTI_DMA]) {
-			jj = val[MULTI_DMA];   kk = val[MULTI_DMA] >> 8;
-			err_dma += mode_loop((__u32)jj,(__u32)kk,'m',&have_mode);
-		}
-		if((val[WHATS_VALID] & OK_W88) && val[ULTRA_DMA]) {
-			jj = val[ULTRA_DMA];   kk = val[ULTRA_DMA] >> 8;
-			err_dma += mode_loop((__u32)jj,(__u32)kk,'u',&have_mode);
-		}
-		if(err_dma || !have_mode) printf("(?)");
 		printf("\n");
 
 		if((dev == ATAPI_DEV) && (eqpt != CDROM) && (val[CAPAB_0] & DMA_IL_SUP)) 
@@ -728,20 +828,22 @@ void identify (__u16 *id_supplied, const char *devname)
 
 	/* Programmed IO stuff */
 	printf("\tPIO: ");
+        /* If a drive supports mode n (e.g. 3), it also supports all modes less
+	 * than n (e.g. 3, 2, 1 and 0).  Print all the modes. */
 	if((val[WHATS_VALID] & OK_W64_70) && (val[ADV_PIO_MODES] & PIO_SUP)) {
 		jj = ((val[ADV_PIO_MODES] & PIO_SUP) << 3) | 0x0007;
 		for(ii = 0; ii <= PIO_MODE_MAX ; ii++) {
 			if(jj & 0x0001)
-				printf("pio%u ",ii);
+				printf("pio%d ",ii);
 			jj >>=1;
 		}
 		printf("\n");
-	} else if(((std < 5) || (eqpt == CDROM)) && (val[PIO_MODE] & MODE) ) {
+	} else if(((min_std < 5) || (eqpt == CDROM)) && ((val[PIO_MODE]>>8) <= 2)) {
 		for(ii = 0; ii <= val[PIO_MODE]>>8; ii++) {
-			printf("pio%u ",ii);
+			printf("pio%d ",ii);
 		}
 		printf("\n");
-	} else  printf("pio0\n");
+	} else  printf("unknown\n");
 	if(val[WHATS_VALID] & OK_W64_70) {
 		if(val[PIO_NO_FLOW] || val[PIO_FLOW]) {
 			printf("\t     Cycle time:");
@@ -767,6 +869,9 @@ void identify (__u16 *id_supplied, const char *devname)
 			if(ii%16 == 15) {
 				jj = val[CMDS_SUPP_0+1+(ii/16)];
 				kk = val[CMDS_EN_0+1+(ii/16)];
+			}
+			if(ii == 31) {
+				if((val[CMDS_SUPP_2] & VALID) != VALID_VAL) ii +=16;
 			}
 		}
 	}
@@ -842,10 +947,9 @@ void identify (__u16 *id_supplied, const char *devname)
 			printf("correct\n");
 		}
 	}
-
-	exit(0);
 }
-__u8 mode_loop(__u32 mode_sup, __u32 mode_sel, int cc, __u8 *have_mode) {
+
+__u8 mode_loop(__u16 mode_sup, __u16 mode_sel, int cc, __u8 *have_mode) {
 	__u16 ii;
 	__u8 err_dma = 0;
 	for(ii = 0; ii <= MODE_MAX; ii++) {
@@ -859,4 +963,31 @@ __u8 mode_loop(__u32 mode_sup, __u32 mode_sel, int cc, __u8 *have_mode) {
 		mode_sup >>=1;   mode_sel >>=1;
 	}
 	return err_dma;
+}
+
+void print_ascii(__u16 *p, __u8 length) {
+	__u8 ii;
+	char cl;
+	
+	/* find first non-space & print it */
+	for(ii = 0; ii< length; ii++) {
+		if(((char) 0x00ff&((*p)>>8)) != ' ') break;
+		if((cl = (char) 0x00ff&(*p)) != ' ') {
+			if(cl != '\0') printf("%c",cl);
+			p++; ii++;
+			break;
+		}
+		p++;
+	}
+	/* print the rest */
+	for(; ii< length; ii++) {
+		unsigned char c;
+		/* some older devices have NULLs */
+		c = (*p) >> 8;
+		if (c) putchar(c);
+		c = (*p);
+		if (c) putchar(c);
+		p++;
+	}
+	printf("\n");
 }

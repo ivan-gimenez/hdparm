@@ -1,14 +1,26 @@
 Source: hdparm
 Section: admin
 Priority: optional
-Maintainer: Christopher L Cheney <ccheney@debian.org>
-Build-Depends: debhelper (>> 3.0.0)
-Standards-Version: 3.5.6.0
+Maintainer: Stephen Gran <sgran@debian.org>
+Build-Depends: cdbs (>> 0.4.5), debhelper (>= 4.2)
+Standards-Version: 3.6.1
 
 Package: hdparm
 Architecture: any
 Depends: ${shlibs:Depends}
+Suggests: apmd
 Replaces: apmd (<= 3.0.2-1.15)
-Description: Tune hard disk parameters for high performance.
- get/set hard disk parameters for Linux IDE drives.
+Description: Tune hard disk parameters for high performance
+ Get/set hard disk parameters for Linux IDE drives.
  Primary use is for enabling irq-unmasking and IDE multiplemode.
+
+Package: hdparm-udeb
+XC-Package-Type: udeb
+Section: debian-installer
+Architecture: any
+Depends: ${shlibs:Depends}
+Description: Tune hard disk parameters for high performance
+ Get/set hard disk parameters for Linux IDE drives.
+ Primary use is for enabling irq-unmasking and IDE multiplemode.
+ .
+ This is a minimal package for use in debian-installer.

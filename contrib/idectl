@@ -6,8 +6,8 @@ MAX_IDE_NR=1
 IDE_IO_0=0x1f0
 IDE_IO_1=0x170
 
-USE_IDE_DEV_0=/dev/hdc
-USE_IDE_DEV_1=/dev/hda
+USE_IDE_DEV_0=/dev/hda
+USE_IDE_DEV_1=/dev/hdc
 
 usage () {
 	if [ $# -gt 0 ]; then

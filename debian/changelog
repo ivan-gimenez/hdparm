@@ -1,3 +1,213 @@
+hdparm (5.8-1) unstable; urgency=low
+
+  * New Upstream version
+    - -h output now goes to stdout rather than stderr
+      (closes: #270510)
+  * Mention config file in manpage (closes: #272641)
+
+ -- Stephen Gran <sgran@debian.org>  Fri, 26 Nov 2004 11:57:13 -0500
+
+hdparm (5.7-1) unstable; urgency=low
+
+  * New upstream release
+    - fixes endian problems (segfault with -i) (closes: #268725)
+  * Stop shipping empty rcS.d (why did I do that?) (closes: #270377)
+
+ -- Stephen Gran <sgran@debian.org>  Sun, 12 Sep 2004 14:00:36 -0400
+
+hdparm (5.6-0.1) unstable; urgency=medium
+
+  * Non-maintainer upload.
+  * New upstream release, blessed by Stephen Gran, original maintainer. This
+    new version allows to set up parameters on IDE disks supported by the new
+    libata kernel interface, that sees them as SCSI disks. hdparm prior to 5.6
+    refuse to set up parameters on SCSI disks (closes: #266903).
+
+ -- David Martínez Moreno <ender@debian.org>  Fri, 20 Aug 2004 16:05:19 +0200
+
+hdparm (5.5-7) unstable; urgency=low
+
+  * Get rid of .commands in source 
+
+ -- Stephen Gran <sgran@debian.org>  Tue, 17 Aug 2004 12:14:24 -0400
+
+hdparm (5.5-6) unstable; urgency=low
+
+  * The God, I hate when I do that release
+  * Revert some changes that are destined for an unfinished feature, and would
+    just break things now.
+
+ -- Stephen Gran <sgran@debian.org>  Tue, 17 Aug 2004 12:08:41 -0400
+
+hdparm (5.5-5) unstable; urgency=low
+
+  * New conf file option -p (Thanks Sebastian Kuzminsky <seb@kernel.org>)
+  * conf file also now allows for straight command line syntax - read
+    comments in hdparm.conf for details
+  * Add watch file
+  * Add udeb (closes: #265969) (Thanks Colin Watson <cjwatson@debian.org> for
+    patch)
+
+ -- Stephen Gran <sgran@debian.org>  Sun, 15 Aug 2004 22:48:29 -0400
+
+hdparm (5.5-4) unstable; urgency=low
+
+  * Patch from "Mario 'BitKoenig' Holbe" <Mario.Holbe@RZ.TU-Ilmenau.DE> for
+    better logic on checking RAID status. (closes: #249944)
+
+ -- Stephen Gran <sgran@debian.org>  Wed, 19 May 2004 20:22:47 -0400
+
+hdparm (5.5-3) unstable; urgency=low
+
+  * Add support for nohdparm boot option, to disable init script
+    I think this addresses the last of the problems with #247170, so I am
+    going to say (closes: #247170)
+  * Fix typo in hdparm.conf (closes: #248934)
+
+ -- Stephen Gran <sgran@debian.org>  Sun, 16 May 2004 14:24:45 -0400
+
+hdparm (5.5-2) unstable; urgency=low
+
+  * Merge in some manpage fixups, hopefully increasing clarity.
+  * The start link is run too early for people who need modules for their
+    controller loaded in order to use DMA.  Added a note to README.Debian
+    explaining what people can do in these circumstances, but leave the link
+    alone.  It's safer for the start script to fail than to have silent data
+    corruption by running it too late by default. (closes: #233188)
+
+ -- Stephen Gran <sgran@debian.org>  Wed,  3 Mar 2004 15:16:08 -0500
+
+hdparm (5.5-1) unstable; urgency=low
+
+  * New upstream version (closes: #232613)
+  * Add warning about examples in conf file - some are for devfs, and some
+    are not.  I thought this was clear enough, but I guess not.
+    (closes: #231641)
+  * Fix up typo in /etc/apm.d/20hdparm (closes: #231822)
+
+ -- Stephen Gran <sgran@debian.org>  Sat, 14 Feb 2004 00:18:07 -0500
+
+hdparm (5.4-10) unstable; urgency=low
+
+  * The "I'm actually putting the changes in this version" release.
+  * Bump up version dependency on debhelper to 4.1.17 for dh_installinit's
+    --no-start option.  Thanks to Thomas Hood for noticing I forgot to
+    actually include this. (closes: #230496)
+  * Actually include the fixed manpage this time. (closes: #230331)
+
+ -- Stephen Gran <sgran@debian.org>  Sat, 31 Jan 2004 15:55:47 -0500
+
+hdparm (5.4-9) unstable; urgency=low
+
+  * Added support for -K and -k (keep settings over reset) - thanks Shaul Karl
+    <shaulk@actcom.net.il> for patches. (closes: #229022)
+  * Hopefully explained -M (acoustic management feature a little more clearly
+    in manpage, and added pointer to READM.acoustic (closes: #230331)
+  * Work a little smarter, instead of a little harder, thanks to Thomas
+    Hood.  Let dh_installinit do The Right Thing, and use --no-start option, 
+    so it doesn't add the invoke-rc.d lines in postinst and prerm. 
+
+ -- Stephen Gran <sgran@debian.org>  Fri, 30 Jan 2004 13:29:54 -0500
+
+hdparm (5.4-8) unstable; urgency=low
+
+  * Added note to README.Debian to warn about the use of the init script with
+    MD arrays (thanks David Harris for bringing this to my attention).  Added
+    pointer to README.Debian to hdparm.conf as well, reminding people to be
+    aware of known issues before enabling the initscript.
+  * Finally wrapped my head around invoke-rc.d a little better (thanks to all
+    those on debian-devel who helped me out here).  Explicitly adding a K link
+    in all run levels will prevent invoke-rc.d from rerunning the script on
+    upgrade, where only having an S link in rcS.d apparently did not do the
+    expected.  That should take care of that nagging detail that I thought had
+    actually been fixed in -7, and really deal with all the parts of #224961.
+  * Allow for setting APM functions (-B) in init script. (closes: #226124)
+  * Fix bug in /etc/apm/20hdparm that made script exit without doing anything,
+    since test $variable || exit 0 tested non-declared variable.
+
+ -- Stephen Gran <sgran@debian.org>  Fri, 30 Jan 2004 13:16:26 -0500
+
+hdparm (5.4-7) unstable; urgency=low
+
+  * Move running of /etc/init.d script earlier to avoid possible disk
+    corrution with 2.6 kernels.  Also apply patch from Bruce Perens (thanks
+    Bruce) (closes: #224961)
+
+ -- Stephen Gran <sgran@debian.org>  Wed, 24 Dec 2003 08:37:20 -0500
+
+hdparm (5.4-6) unstable; urgency=low
+
+  * moved /etc/default/hdparm to /etc/hdparm.conf, because this is actually
+    policy compliant.  It turns out (mea culpa) default/ files need to be
+    shell scripts, which this is not.  Thanks for noticing this, joeyh.
+    (closes: #222133)
+  * Fixed manpage typo in section -M.  Thanks, Adrian.  (closes: #222557)
+
+ -- Stephen Gran <sgran@debian.org>  Fri,  5 Dec 2003 14:28:07 -0500
+
+hdparm (5.4-5) unstable; urgency=low
+
+  * Changed parsing of -c to accept multiple values instead of it being a 
+     boolean option (closes: #219641)
+  * Make initscript parsing of /etc/default/ file more flexible - now allows
+     parsing of lines that contain whitespace in addition to a newline.  Also
+     now has large note at top describing currently allowed syntax.
+     (closes: #219138)
+
+ -- Stephen Gran <sgran@debian.org>  Mon, 10 Nov 2003 23:10:01 -0500
+
+hdparm (5.4-4) unstable; urgency=low
+
+  * Add acoustic management support to /etc/init.d/hdparm script (and
+    /etc/default/hdparm) (closes: #217634)
+
+ -- Stephen Gran <sgran@debian.org>  Sun, 26 Oct 2003 10:44:06 -0500
+
+hdparm (5.4-3) unstable; urgency=low
+
+  * New maintainer (closes: #217098)
+  * Fix description of -A in manpage (closes: #212257)
+  * Build uses cdbs now, which supports building unstripped (closes: #190867)
+  * Change reference to boot time script to reflect actual file
+     (closes: #157919)
+  * /etc/apm/20hdparm now handles multiple drives (closes: #149558)
+  * /etc/init.d/hdparm and /etc/default/hdparm now included.
+    Many thanks to Shaul Karl <shaul@rakefet> and Joerg Sommer
+    <joerg@alea.gnuu.de> for suggestions and samples.
+    (closes: #87451, #169406, #175506, #198516)
+
+ -- Stephen Gran <sgran@debian.org>  Thu, 23 Oct 2003 14:00:37 -0400
+
+hdparm (5.4-2) unstable; urgency=low
+
+  * Added cdbs to Build-Depends.
+
+ -- Christopher L Cheney <ccheney@debian.org>  Mon,  4 Aug 2003 23:00:00 -0500
+
+hdparm (5.4-1) unstable; urgency=low
+
+  * New upstream release.
+  * Move contrib scripts. (Closes: #122644)
+  * Suggest apmd. (Closes: #137434)
+  * Include upstream documentation. (Closes: #155171)
+  * Bumped debhelper version. (Closes: #190866)
+
+ -- Christopher L Cheney <ccheney@debian.org>  Mon,  4 Aug 2003 22:00:00 -0500
+
+hdparm (5.3-0.1) unstable; urgency=low
+
+  * NMU with permission of maintainer.
+  * New upstream release. (closes: #135708)
+  * This should build on s390/hppa/ia64 again (closes: #155725, #185704)
+
+ -- Andrew Suffield <asuffield@debian.org>  Wed,  9 Apr 2003 21:40:35 +0100
+
+hdparm (5.2-1) unstable; urgency=low
+
+  * New upstream.
+
+ -- Christopher L Cheney <ccheney@debian.org>  Wed, 31 Jul 2002 14:35:00 -0500
+
 hdparm (4.5-1.2) unstable; urgency=low
 
   * NMU

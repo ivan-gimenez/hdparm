@@ -1,3 +1,76 @@
+hdparm-5.8
+	- added HDIO_SET_WCACHE support to -W
+	- fixed double byteswap for big endian
+	- fixed %lld warnings on 64-bit architectures
+	- "hdparm -h" now goes to stdout instead of stderr
+hdparm-5.7
+	- fixed output of NULs in -I string fields
+	- fixed big-endian -I crashes from 5.6
+	- removed remains of defunct major-number checks
+	- added support for BLKGETSIZE64 ioctl internally
+	- added --direct flag to use O_DIRECT on device open
+	- renamed -Istdin  to --Istdin
+	- renamed -Istdout to --Istdout
+	- allow other flags to follow any of: -I, --Istdin, --Istdout
+hdparm-5.6
+	- fixed reversed device names in idectl script
+	- renamed readahead variables to avoid new glibc conflicts
+	- added -Istdout flag to dump IDENTIFY data as hex
+	- removed MAJOR number checks to open up hdpar for SATA-SCSI drivers
+hdparm-5.5
+	- added limited support for SCSI(-controlled) CDROM/optical drives
+	- incorporated various -I clean-up patches from Maciej W. Rozycki
+	- removed wordswap from capacity calculation: latest kenels already do it
+	- fixed slight issues with ATA Revision display
+	- added debian scripts from Stephan Gran
+hdparm-5.4
+	- fixed 2.5.67 compile error (LVM_BLK_MAJOR)
+	- first attempt to support BIG_ENDIAN in identify.c
+	- converted -T and -t to use minimum timing intervals (2 and 3 seconds)
+	- fix device size overflow issue with -t
+	- hdparm -I: fixed device size output for devices with reversed endian.
+	- hdparm -i: added explanation for "*"
+	- slight formatting change for -Tt outputs
+	- fixed "(illegal value)" formatting
+	- added CCISS_MAJOR
+	- incorporated RedHat-8.0 and other patches
+hdparm-5.3
+	- get rid of malloc()
+	- fix(?) BIG_ENDIAN problems
+	- fix -tT to work on very small drives
+	- fix -p output for parameters >= 100
+hdparm-5.2
+	- compile fixes for latest 2.5.xx kernels
+	- moved -s from CFLAGS to LDFLAGS
+	- fixed manpage formatting error from 5.1
+	- -i was broken due to non-compatible changes in 2.5.xx
+	- the fix for -i now breaks hdparm -i for really old kernels
+hdparm-5.1
+	- fixed segfault from -i on older drives
+hdparm-5.0
+	- updated -I to most recent ATA6 draft standard
+	- added -Istdin to process input from /proc/ide/hd*/identify
+	- CFLAGS Makefile fix from Kevin P. Fleming
+	- -X mode names from Martin
+	- tweaked #include's for Slackware
+	- eliminate bogus "udma10" from -I output
+	- formatting fixes for -I from various people
+	- clean compile fixes from Steven Augart <steve@augart.com>
+	- allow -d parameters other than 0/1 for special uses
+	- removed busstate, acoustic, and nowerr from "-v" subset
+	- support for Pacific Digital ADMA-100i
+hdparm-4.9
+	- fixed compile error with some kernels
+hdparm-4.8
+	- updated -Q to take queue depth as parameter value
+hdparm-4.7
+	- add -z option for BLKRRPART ("re-read partition table")
+	- add -Q option to turn on/off tagged queuing
+	- add -M option for acoustic feature set
+	- allow ANY value for the parameter to '-p' (user beware!)
+	- applied APM fixes from Gildas Bazin <gbazin@netcourrier.com>
+hdparm-4.6
+	- fix version numbers, update DMA notes in manpage
 hdparm-4.5
 	- ENDIAN tidyup, GETGEO fixes, Makefile fixes, mostly courtesy of Maciej W. Rozycki
 hdparm-4.4
