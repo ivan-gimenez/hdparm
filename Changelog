@@ -1,3 +1,6 @@
+hdparm-5.9
+	- fix security-mode display (Franz Lehner)
+	- fixed -W bug (Stephan Gran)
 hdparm-5.8
 	- added HDIO_SET_WCACHE support to -W
 	- fixed double byteswap for big endian

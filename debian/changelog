@@ -1,3 +1,10 @@
+hdparm (5.9-1) unstable; urgency=low
+
+  * New upstream version
+    - fixes -W switch (closes: #293378)
+
+ -- Stephen Gran <sgran@debian.org>  Fri,  4 Feb 2005 08:56:57 -0500
+
 hdparm (5.8-1) unstable; urgency=low
 
   * New Upstream version

@@ -10,7 +10,7 @@ Architecture: any
 Depends: ${shlibs:Depends}
 Suggests: apmd
 Replaces: apmd (<= 3.0.2-1.15)
-Description: Tune hard disk parameters for high performance
+Description: tune hard disk parameters for high performance
  Get/set hard disk parameters for Linux IDE drives.
  Primary use is for enabling irq-unmasking and IDE multiplemode.
 
@@ -19,7 +19,7 @@ XC-Package-Type: udeb
 Section: debian-installer
 Architecture: any
 Depends: ${shlibs:Depends}
-Description: Tune hard disk parameters for high performance
+Description: tune hard disk parameters for high performance
  Get/set hard disk parameters for Linux IDE drives.
  Primary use is for enabling irq-unmasking and IDE multiplemode.
  .

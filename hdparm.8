@@ -1,4 +1,4 @@
-.TH HDPARM 8 "November 2004" "Version 5.8"
+.TH HDPARM 8 "February 2005" "Version 5.9"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -81,7 +81,7 @@ flags can be used to manipulate the IDE power modes.
 .I -d
 Disable/enable the "using_dma" flag for this drive.  This option now works
 with most combinations of drives and PCI interfaces which support DMA
-and which are known to the IDE driver.
+and which are known to the kernel IDE driver.
 It is also a good idea to use the appropriate
 .I -X
 option in combination with
@@ -237,9 +237,6 @@ have the ability to speed down the head movements to reduce their noise output.
 The possible values are between 0 and 254. 128 is the most quiet (and therefore
 slowest) setting and 254 the fastest (and loudest). Some drives have only two 
 levels (quiet / fast), while others may have different levels between 128 and 254.
-At the moment, most drives only support 3 options, off, quiet, and fast.  These
-have been assigned the values 0, 128, and 254 at present, respectively, but integer
-space has been left for future expansion if this changes.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I -n
@@ -463,9 +460,6 @@ Force a kernel re-read of the partition table of the specified device(s).
 Disable the automatic power-saving function of certain Seagate drives
 (ST3xxx models?), to prevent them from idling/spinning-down
 at inconvenient times.
-.SH "FILES"
-.LP
-/etc/hdparm.conf
 .SH BUGS
 As noted above, the
 .B -m sectcount
