@@ -1,9 +1,7 @@
 This is the Debian GNU/Linux prepackaged version of the "hdparm"
 program. Hdparm was written by Mark Lord <mlord@bnr.ca>.
 
-This package was put together by Bruce Perens <Bruce@Pixar.com>,
-from sources obtained from:
-sunsite.unc.edu:/pub/Linux/system/Misc/hdparm-2.1.tar.gz
+sunsite.unc.edu:/pub/Linux/system/hardware/hdparm-3.3.tar.gz
 
 Copying Policy
 	Freely distributable/useable, (c) Mark Lord
@@ -23,4 +21,4 @@ Changes
 25-June-1996 Steve Dunham <dunham@gdl.msu.edu>
 	Upgraded to current version.
 
-See changelog.
+See changelog for newer changes.

@@ -1,3 +1,8 @@
+hdparm-3.3
+	- add -C, -y, and -Y flags for IDE power management
+hdparm-3.2
+	- force BLKFLSBUF after -T or -t  -- kmg@barco.com
+	- fix minor -T/-t mixup in manpage -- hankedr@mail.auburn.edu
 hdparm-3.1
 	- permit "-p" with values larger than 5 (for cmd640 readahead)
 	- updated version number on manpage (was way out of date!)

@@ -38,6 +38,7 @@ binary-arch:	checkroot build
 	-rm -rf debian/tmp
 	install -d debian/tmp/usr/sbin debian/tmp/etc
 	make install DESTDIR=debian/tmp
+	chmod +x debian/debstd
 	debian/debstd $(package) CHANGES INSTALL README* TODO
 	install -m 644 -o root -g root hdparm.lsm debian/tmp/usr/doc/hdparm
 	dpkg-gencontrol

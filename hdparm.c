@@ -1,5 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark S. Lord (c) 1994-1996 -- freely distributable */
+/*          - by Mark S. Lord (c) 1994-1997 -- freely distributable */
 
 #include <unistd.h>
 #include <string.h>
@@ -29,7 +29,7 @@
 #endif
 #endif
 
-#define TIMING_MB		16
+#define TIMING_MB		32
 #define TIMING_BUF_MB		1
 #define TIMING_BUF_BYTES	(TIMING_BUF_MB * 1024 * 1024)
 #define TIMING_BUF_COUNT	(TIMING_MB / TIMING_BUF_MB)
@@ -68,6 +68,9 @@ static unsigned long set_lookahead= 0, get_lookahead= 0, lookahead= 0;
 static unsigned long set_prefetch = 0, get_prefetch = 0, prefetch = 0;
 static unsigned long set_wcache   = 0, get_wcache   = 0, wcache   = 0;
 static unsigned long set_seagate  = 0, get_seagate  = 0;
+static unsigned long set_standbynow = 0, get_standbynow = 0;
+static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
+static unsigned long get_powermode  = 0;
 #endif
 #ifdef HDIO_SET_32BIT
 static int get_IDentity = 0;
@@ -639,6 +642,24 @@ void process_dev (char *devname)
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD failed");
 	}
+	if (set_standbynow) {
+#define WIN_STANDBYNOW 0x94	/* or 0xE0 */
+		unsigned char args[4] = {WIN_STANDBYNOW,0,0,0};
+		no_scsi();
+		if (get_standbynow)
+			printf(" issuing standby command\n");
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+			perror(" HDIO_DRIVE_CMD failed");
+	}
+	if (set_sleepnow) {
+#define WIN_SLEEPNOW 0x99	/* or 0xE6 */
+		unsigned char args[4] = {WIN_SLEEPNOW,0,0,0};
+		no_scsi();
+		if (get_sleepnow)
+			printf(" issuing sleep command\n");
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+			perror(" HDIO_DRIVE_CMD failed");
+	}
 	if (set_seagate) {
 		unsigned char args[4] = {0xfb,0,0,0};
 		no_scsi();
@@ -767,6 +788,28 @@ void process_dev (char *devname)
 		else	printf(" geometry     = %d/%d/%d, sectors = %ld, start = %ld\n",
 				g.cylinders, g.heads, g.sectors, parm, g.start);
 	}
+#ifdef HDIO_DRIVE_CMD
+	if (get_powermode) {
+#define WIN_CHECKPOWERMODE	0x98	/* or 0xE5 */
+		unsigned char args[4] = {WIN_CHECKPOWERMODE,0,0,0};
+		const char *state;
+		no_scsi();
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args)) {
+			if (errno != EIO || args[0] != 0 || args[1] != 0) {
+				/* perror(" HDIO_DRIVE_CMD failed"); */
+				state = "unknown";
+			} else {
+				state = "sleeping";
+			}
+		} else {
+			if (args[2] == 255)
+				state = "active/idle";
+			else
+				state = "standby";
+		} 
+		printf(" drive state is:  %s\n", state);
+	}
+#endif
 	if (get_identity) {
 		no_scsi();
 		if (!(ioctl(fd, HDIO_GET_IDENTITY, &id))) {
@@ -802,7 +845,7 @@ void process_dev (char *devname)
 
 void usage_error (void)
 {
-	fprintf(stderr,"\n%s - get/set hard disk parameters - version 3.1\n\n", progname);
+	fprintf(stderr,"\n%s - get/set hard disk parameters - version 3.3\n\n", progname);
 	fprintf(stderr,"Usage:  %s  [options] [device] ..\n\n", progname);
 	fprintf(stderr,"Options:\n"
 	" -a    get/set fs readahead\n"
@@ -811,6 +854,9 @@ void usage_error (void)
 #endif
 #ifdef HDIO_SET_32BIT
 	" -c  * get/set IDE 32-bit IO setting\n"
+#endif
+#ifdef HDIO_DRIVE_CMD
+	" -C  * check IDE power mode status\n"
 #endif
 #ifdef HDIO_SET_DMA
 	" -d  * get/set using_dma flag\n"
@@ -833,7 +879,7 @@ void usage_error (void)
 	" -n  * get/set ignore-write-errors flag (0/1)\n"
 #endif
 #ifdef HDIO_SET_PIO_MODE
-	" -p  * set PIO mode on IDE interface chipset (0,1,2,3,4,5)\n"
+	" -p  * set PIO mode on IDE interface chipset (0,1,2,3,4,...)\n"
 #endif
 #ifdef HDIO_DRIVE_CMD
 	" -P  * set drive prefetch count\n"
@@ -845,11 +891,13 @@ void usage_error (void)
 #endif
 	" -t    perform device read timings\n"
 	" -T    perform cache read timings\n"
-	" -u  * get/set unmaskirq flag (0/1) (DANGEROUS)\n"
+	" -u  * get/set unmaskirq flag (0/1)\n"
 	" -v    default; same as -acdgkmnru (-gr for SCSI)\n"
 #ifdef HDIO_DRIVE_CMD
 	" -W  * set drive write-caching flag (0/1) (DANGEROUS)\n"
 	" -X  * set IDE xfer mode (DANGEROUS)\n"
+	" -Y  * put IDE drive in standby mode\n"
+	" -Y  * put IDE drive to sleep\n"
 	" -Z  * disable Seagate auto-powersaving mode\n"
 #endif
 	"        * = (E)IDE drives only\n\n");
@@ -1035,6 +1083,23 @@ int main(int argc, char **argv)
 							fprintf(stderr, "-W: missing value (0/1)\n");
 						break;
 
+					case 'C':
+						get_powermode = noisy;
+						noisy = 1;
+						break;
+
+					case 'y':
+						get_standbynow = noisy;
+						noisy = 1;
+						set_standbynow = 1;
+						break;
+
+					case 'Y':
+						get_sleepnow = noisy;
+						noisy = 1;
+						set_sleepnow = 1;
+						break;
+
 					case 'Z':
 						get_seagate = noisy;
 						noisy = 1;
@@ -1060,9 +1125,11 @@ int main(int argc, char **argv)
 						break;
 					case 't':
 						do_timings = 1;
+						do_flush = 1;
 						break;
 					case 'T':
 						do_ctimings = 1;
+						do_flush = 1;
 						break;
 					case 'h':
 					default:
