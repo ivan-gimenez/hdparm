@@ -1,0 +1,20 @@
+Source: hdparm
+Section: unknown
+Priority: extra
+Maintainer: Steve Dunham <dunham@gdl.msu.edu>
+Standards-Version: 2.1.0.0
+
+Package: hdparm
+Architecture: any
+Depends: ${shlibs:Depends}
+Description: Tune hard disk parameters for high performance.
+ Shell utility to access/tune ioctl features of the
+ linux hard disk and (E)IDE drivers for kernel 1.1.65+.
+ Primary use is for enabling irq-unmasking and IDE multiplemode.
+ v3.0 more flags for newer kernels
+ v2.9 many changes (see Changelog)
+ v2.3 added runtime flags for 32-bit mode; fixed -t for SCSI.
+ v2.2 cosmetic changes only
+ v2.1 cosmetic changes only
+ v2.0 adds zillions of features for use with the new (E)IDE
+ driver (v2.6 and higher)

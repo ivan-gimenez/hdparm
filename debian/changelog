@@ -1,0 +1,11 @@
+hdparm (3.1-2) unstable; urgency=low
+
+  * Fixed Architecture: field
+
+  * Upgrade to 3.1.  Change to "Package format of the month"(TM)
+
+ -- Steve Dunham <dunham@gdl.msu.edu>  Thu, 10 Oct 1996 19:51:22 -0800
+
+Local variables:
+mode: debian-changelog
+End:

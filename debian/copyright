@@ -1,0 +1,11 @@
+This package was debianized by Steve Dunham dunham@gdl.msu.edu on
+Thu, 10 Oct 1996 19:51:22 -0800.
+
+It was downloaded from 
+  ftp://sunsite.unc.edu/pub/Linux/kernel/patches/diskdrives
+
+Copyright:
+
+Copying-policy:	Freely distributable/useable, (c) Mark Lord
+
+See hdparm.lsm for more info
