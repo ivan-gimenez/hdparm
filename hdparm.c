@@ -421,12 +421,13 @@ static int do_blkgetsize (int fd, unsigned long long *blksize64)
 	int		rc;
 	unsigned int	blksize32 = 0;
 
-	if (0 == ioctl(fd, BLKGETSIZE64, blksize64))
+        if (0 == ioctl(fd, BLKGETSIZE64, blksize64)) {  // returns bytes
+                *blksize64 /= 512;
 		return 0;
-	rc = ioctl(fd, BLKGETSIZE64, &blksize32);
+        }
+	rc = ioctl(fd, BLKGETSIZE64, &blksize32);       // returns sectors
 	if (rc)
 		perror(" BLKGETSIZE failed");
-	*blksize64 = blksize32;
 	return rc;
 }
 

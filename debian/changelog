@@ -1,3 +1,15 @@
+hdparm (5.9-4) unstable; urgency=low
+
+  * Allow overriding of (rather simple minded) built-in safety checks
+    in init script (closes: #299330)
+  * Patch to output sectors instead of bytes on kernels that support
+    BLKGETSIZE64 (closes: #299109)
+  * Reorganize README.Debian, and better document the init script (hopefully)
+  * Add documentation to init script and conf file, and make indenting more
+    readable in init script (closes: #299440)
+
+ -- Stephen Gran <sgran@debian.org>  Mon, 14 Mar 2005 06:05:55 -0500
+
 hdparm (5.9-3) unstable; urgency=low
 
   * Don't skip drives in hdparm.init if $ROOTFS is unset (closes: #296364)
