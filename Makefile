@@ -3,7 +3,7 @@
 all: hdparm
 
 hdparm: hdparm.c /usr/include/linux/hdreg.h
-	gcc -Wall -Wstrict-prototypes -O2 -s -o hdparm hdparm.c
+	gcc $(CFLAGS) -o hdparm hdparm.c
  
 install: all hdparm.8
 #	if [ -f /usr/sbin/hdparm ]; then rm -f /usr/sbin/hdparm ; fi 
