@@ -21,18 +21,29 @@ to always be safe.  Please do not add anything to hdparm.conf, and instead
 run hdparm by hand only after you are sure that your array has finished 
 rebuilding.
 
-hdparm's init script is set to run at rcS.d/S07 because there have been
-reports of data corruption with mounted disks.  This particular placement
-may not work for you if the ability to use things like DMA relies on
-having modules for your motherboard loaded, as it is run before the module
-loading script.  If this is the case for you, please move your symlink to
-rcS.d/S21, and it will run right after loading modules, but before mounting
-of the rest of your partitions.  That is as safe as it can reasonably be,
-in those circumstances.  The other option is to compile your kernel with
-the needed modules built in, and leave the link in place.
+hdparm's init script is set to run at /etc/rcS.d/S07 because there have
+been reports of data corruption with mounted disks.  This particular
+placement may not work for you if the ability to use things like DMA
+relies on having modules for your motherboard loaded, as it is run before
+the module loading script.  If this is the case for you, do the following:
+
+In hdparm.conf, set ROOTFS to whatever drive / is mounted on, for example
+ROOTFS = /dev/hda
+
+Set up a second link, /etc/rcS.d/S29hdparm.second, pointing to
+/etc/init.d/hdparm.  ln -s /etc/init.d/hdparm /etc/rcS.d/S29hdparm.second
+will do this for you.
+
+If you use an alternate init scheme, such as runit or minit or file-rc,
+set this up appropriately for your setup.  The improtant thing is that
+the link name does not _end_ in 'hdparm' (the script checks this with 
+case "$0" in *hdparm), so take care in your naming scheme.  Now the init
+script will run once at 07 for yout root filesystem, and then later for
+all other defined filesystems.  This will give the other scripts a chance
+to load modules and create devices.
 
 If the init script gives you problems, you can boot the kernel with the
 command line option 'nohdparm' (without the single quotes), and the init
 script will not run.
 
- -- Stephen Gran <sgran@debian.org>  Sun, 16 May 2004 14:27:23 -0400
+ -- Stephen Gran <sgran@debian.org>  Thu, 17 Feb 2005 22:00:23 -0500

@@ -1,3 +1,24 @@
+hdparm (5.9-3) unstable; urgency=low
+
+  * Don't skip drives in hdparm.init if $ROOTFS is unset (closes: #296364)
+
+ -- Stephen Gran <sgran@debian.org>  Mon, 21 Feb 2005 22:11:40 -0500
+
+hdparm (5.9-2) unstable; urgency=low
+
+  * Readability fixup in hdparm.init (closes: #294761) (thanks Thomas Hood
+    <jdthood@aglu.demon.nl>)
+  * Test for existance of device before running hdparm on it.  This doesn't
+    really fix the problem of things like udev creating the device files so
+    slowly, but it allows the init script to run to completion, instead of
+    bailing due to set -e (closes: #249446)
+  * Set up the infrastructure for a 2 stage call at boot time.  Unfortunately,
+    the admin will have to do a little work themselves to configure this, but
+    doing it automagically appears impossible in all situations, so I will not
+    push it much further.  (closes: #250232, #290629)
+
+ -- Stephen Gran <sgran@debian.org>  Thu, 17 Feb 2005 22:00:33 -0500
+
 hdparm (5.9-1) unstable; urgency=low
 
   * New upstream version

@@ -2,6 +2,33 @@
 
 set -e
 
+case "$0" in
+  *hdparm)
+  FIRST=yes
+  ;;
+  *)
+  FIRST=no
+  ;;
+esac
+
+MYNAME="$0"
+
+report()
+{
+  echo "${MYNAME}: $*"
+}
+
+report_error()
+{
+  echo "${MYNAME}: Error: $*" >&2
+}
+
+report_error_and_exit()
+{
+  report_error "$*.  Exiting."
+  exit 1
+}
+
 case $1 in
   start|restart|reload|force-reload)
     ;;
@@ -9,13 +36,13 @@ case $1 in
     exit 0
     ;;
   *)
-    echo "Usage: $0 {stop|start|restart|reload|force-reload}" >&2
-    exit 1
+    echo "Usage: $MYNAME {stop|start|restart|reload|force-reload}" >&2
+    exit 3
     ;;
 esac
 
 if grep -w -q "nohdparm" /proc/cmdline ; then
-  echo "Skipping setup of disc parameters."
+  report "Skipping setup of disc parameters."
   exit 0
 fi
 
@@ -29,11 +56,11 @@ elif [ -e /proc/rd/status ]; then
 fi
 
 if ! [ "$raidstat" = 'OK' ]; then
-  echo "RAID status not OK.  Exiting."
+  report_error "RAID status not OK.  Exiting."
   exit 0
 fi
 
-echo -n "Setting disc parameters:"
+echo -n "Setting parameters of disc:"
 
 DISC=
 DEFAULT=
@@ -82,8 +109,11 @@ eval_value() {
 # Get blocks as far as the drive's write cache.
 /bin/sync
 
-egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf | while read KEY SEP VALUE; do
- if [ "$NEXT_LINE" != 'go' ]; then
+egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf | 
+{
+  ITEMS_ECHOED=no
+  while read KEY SEP VALUE; do
+  if [ "$NEXT_LINE" != 'go' ]; then
   case $SEP in
     '{')
        case $KEY in
@@ -160,27 +190,43 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf | while read KEY SEP VALUE; do
          chipset_pio_mode)
            set_option -p$VALUE
           ;;
+         ROOTFS)
+           ROOTFS=$VALUE
+          ;; 
 	 *)
-	   echo "unknown option $KEY"
-	   exit 1
+	   report_error_and_exit "unknown option $KEY"
 	   ;;
        esac
     ;;
     "")
        case $KEY in
-         })
+         '}')
 	   if [ -z "$DISC" ]; then
              if [ "$WAS_RUN" != '1' ]; then
-               echo "No disk enabled. Exiting"
-               exit 1
+               report_error_and_exit "No disk enabled. Exiting"
              fi
 	   fi
 	   if [ -n "$OPTIONS" ]; then
-	     # Flush the drive's internal write cache to the disk.
-	     /sbin/hdparm -q -f $DISC
+             if [ -b "$DISC" ]; then
+               if [ -n "$ROOTFS" ]; then
+                 if [ "$FIRST" = 'yes' -a "$DISC" != "$ROOTFS" ]; then
+                   continue
+                 fi
+                 if [ "$FIRST" = 'no' -a "$DISC" = "$ROOTFS" ]; then
+                   continue
+                 fi
+               fi
+	       # Flush the drive's internal write cache to the disk.
+	       /sbin/hdparm -q -f $DISC
 
-	     /sbin/hdparm $OPTIONS $DISC
-	     echo -n " $DISC,"
+	       /sbin/hdparm $OPTIONS $DISC
+               if [ "$ITEMS_ECHOED" = yes ] ; then
+                 echo -n ", $DISC"
+               else
+                 echo -n " $DISC"
+                 ITEMS_ECHOED=yes
+               fi
+             fi
 	   fi       
            ;;
          quiet)
@@ -200,14 +246,12 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf | while read KEY SEP VALUE; do
            set_option -Z
 	   ;;
          *)
-	   echo "unknown option $KEY"
-	   exit 1
+	   report_error_and_exit "unknown option $KEY"
 	   ;;
        esac
 	   ;;
    *)
-     echo "unknown separator $SEP"
-     exit 1
+     report_error_and_exit "unknown separator $SEP"
      ;;
   esac
 else
@@ -216,5 +260,9 @@ else
   WAS_RUN=1
 fi
 done
-
-echo " done."
+if [ "$ITEMS_ECHOED" = yes ] ; then
+  echo "."
+else
+  echo " (none)."
+fi
+}
