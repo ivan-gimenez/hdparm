@@ -1,3 +1,25 @@
+hdparm-3.6
+	- added new -V (version) option
+	- removed confusing LBA "remapping" geometry calculation
+	- small fix to "-I"
+	- Courtesy of Andrzej Krzysztofowicz <ankry@green.mif.pg.gda.pl>:
+		- added support for old XT drives
+		- transfer display in kB/s rather than in MB/s for slow disks
+		- fixed -v for SCSI disks
+	- added -L to lock/unlock door of removeable harddisks
+	- added udma modes 3,4,5..
+	- updated Makefile to use "destdir" prefix -- Ytiddo <ytiddo@dicksonstreet.com>
+hdparm-3.5
+	- fixed compilation under older kernels
+	- fixed udma mode info under older kernels
+hdparm-3.4
+	- added udma mode info
+	- added support for SCSI_DISK_MAJOR{0-7}
+	- fix -h (help) to show -y instead of -Y for "standby"
+	- fix display of drive SerialNo: 20 chars instead of just 8
+	- modify -C -y -Y to each try both possible command codes
+	- add interpretations for use of -X to set UltraDMA modes
+	- add -D for enable/disable drive defect-mgmt
 hdparm-3.3
 	- add -C, -y, and -Y flags for IDE power management
 hdparm-3.2

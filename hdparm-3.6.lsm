@@ -1,0 +1,29 @@
+Begin3
+Title:		hdparm - get/set hard disk parameters
+Version:	3.6
+Entered-date:	21OCT99
+Description:	Shell utility to access/tune ioctl features of
+		the Linux IDE driver and IDE drives.
+		v3.6 mostly cosmetic fixes, xt & ide4+ide5 support
+		v3.5 fixed udma display/compile for older kernels
+		v3.4 mostly cosmetic updates
+		v3.3 add -C, -y, -Y flags for power management
+		v3.2 flush buffer cache after -t or -T
+		v3.1 add support for "-p[6789]"
+		v3.0 move cache timings to new -T option
+		v2.9 update author's email addr; document -I option
+		v2.8 some fixes; removed "Estimating raw driver speed" from -t
+		v2.7 fixed "hdparm -c" (broke in 2.6); fixed .lsm file
+		v2.6 added "-p" flag to set IDE interface chipset PIO modes
+		v2.5 cosmetic fixes, manpage clarifications
+		v2.4 added support for -d (DMA) flag
+		v2.3 added runtime flags for 32-bit mode; fixed -t for SCSI.
+		v2.0 adds zillions of features for the new (E)IDE driver
+Keywords:	ide eide ata ata2 performance kernel cd cdrom disk device driver
+Author:		mlord@pobox.com (Mark Lord)
+Maintained-by:	mlord@pobox.com (Mark Lord)
+Primary-site:	sunsite.unc.edu /pub/Linux/system/hardware
+		16kB hdparm-3.6.tar.gz
+		1kB hdparm-3.6.lsm
+Copying-policy:	Freely distributable/useable, (c) Mark Lord
+End

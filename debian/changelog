@@ -1,3 +1,18 @@
+hdparm (3.6-1) unstable; urgency=low
+
+  * New upstream version
+  * Fix problem with no media on CDs
+  * Add comment about -q option
+  * Closes: #30866, #39511
+
+ -- Steve Dunham <dunham@debian.org>  Fri, 29 Oct 1999 23:38:58 -0700
+
+hdparm (3.5-1) unstable; urgency=low
+
+  * New upstream version (#30010,#26368)
+
+ -- Steve Dunham <dunham@debian.org>  Fri, 27 Nov 1998 11:49:03 -0500
+
 hdparm (3.3-3) unstable; urgency=low
 
   * Switch to debhelper (#17219)
