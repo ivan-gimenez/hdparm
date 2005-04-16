@@ -124,12 +124,29 @@ eval_value()
   esac
 }
 
+ITEMS_ECHOED=no
+
 # Get blocks as far as the drive's write cache.
 /bin/sync
 
+# Set options for a group of disks in /etc/default/hdparm
+[ -e /etc/default/hdparm ] && . /etc/default/hdparm
+
+if [ -n "$harddisks" -a -n "$hdparm_opts" ]; then
+  for drive in $harddisks; do 
+    /sbin/hdparm -q -f $drive
+    hdparm -q $hdparm_opts -q $drive
+    if [ "$ITEMS_ECHOED" = yes ] ; then
+      echo -n ", $drive"
+    else
+      echo -n " $drive"
+      ITEMS_ECHOED=yes
+    fi
+  done
+fi
+
 egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf | 
 {
-  ITEMS_ECHOED=no
   while read KEY SEP VALUE; do
     if [ "$NEXT_LINE" != 'go' ]; then
       case $SEP in

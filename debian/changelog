@@ -1,3 +1,12 @@
+hdparm (6.0-1) unstable; urgency=low
+
+  * New upstream version
+    - Includes WIN_SECURITY_FREEZE_LOCK (closes: #302774)
+  * Allow multiple disks to be set up at once in /etc/default/hdparm
+    (closes: #296368)
+
+ -- Stephen Gran <sgran@debian.org>  Sat, 16 Apr 2005 12:36:14 -0400
+
 hdparm (5.9-4) unstable; urgency=low
 
   * Allow overriding of (rather simple minded) built-in safety checks

@@ -66,5 +66,18 @@ Known problems, limitations, and work-arounds:
   passing the environment variable FORCE_RUN=yes to the init script.
   i.e.:
   FORCE_RUN=yes /etc/init.d hdparm start
+
+Multiple disks with the same options:
+  /etc/default/hdparm can take environment variables for simple options 
+  for a block of disks that are to be set up in the same way.  This would
+  be useful for a JBOD type array, or similar arrangement.  Setting up disks
+  in this way does not currently integrate with the more complicated checks
+  and arrangements that are done with the settings in hdparm.conf.  If you
+  need to load modules before tuning a hard disk, or need to allow udev to
+  run before hdparm, do not use this option.  This is intended only for 
+  disks with normal device nodes, accessible early in the boot process, and
+  with kernel support before module loading.  A complete rewrite is really 
+  needed to better integrate this option and the udev stuff that is needed.
+  Hopefully I'll have the time soon (or somebody will send the patches :)
   
- -- Stephen Gran <sgran@debian.org>  Sun, 13 Mar 2005 13:11:50 -0500
+ -- Stephen Gran <sgran@debian.org>  Fri, 15 Apr 2005 23:39:49 -0400

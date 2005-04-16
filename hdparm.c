@@ -1,6 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2004 -- freely distributable */
-
+/*          - by Mark Lord (C) 1994-2005 -- freely distributable */
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
@@ -26,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v5.9"
+#define VERSION "v6.0"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -35,7 +34,7 @@ extern const char *minor_str[];
 #endif
 
 #ifndef CDROM_SELECT_SPEED	/* already defined in 2.3.xx kernels and above */
-#define CDROM_SELECT_SPEED       0x5322
+#define CDROM_SELECT_SPEED	0x5322
 #endif
 
 #ifndef BLKGETSIZE64
@@ -85,6 +84,21 @@ static unsigned long set_doorlock = 0, get_doorlock = 0, doorlock = 0;
 static unsigned long set_seagate  = 0, get_seagate  = 0;
 static unsigned long set_standbynow = 0, get_standbynow = 0;
 static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
+static unsigned long set_freeze   = 0;
+static unsigned long security_master=0, security_mode=0;
+static unsigned long set_security   = 0;
+
+#ifndef WIN_SECURITY_FREEZE_LOCK
+	#define WIN_SECURITY_SET_PASS		0xF1
+	#define WIN_SECURITY_UNLOCK		0xF2
+	#define WIN_SECURITY_ERASE_PREPARE	0xF3
+	#define WIN_SECURITY_ERASE_UNIT		0xF4
+	#define WIN_SECURITY_FREEZE_LOCK	0xF5
+	#define WIN_SECURITY_DISABLE		0xF6
+#endif
+static unsigned int security_command = WIN_SECURITY_UNLOCK;
+
+static char security_password[64];
 static unsigned long get_powermode  = 0;
 static unsigned long set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 #endif
@@ -131,7 +145,7 @@ static int open_flags = O_RDONLY|O_NONBLOCK;
 // Too bad, really.
 
 const char *cfg_str[] =
-{	"",	     " HardSect",   " SoftSect",  " NotMFM",
+{	"",	        " HardSect",   " SoftSect",  " NotMFM",
 	" HdSw>15uSec", " SpinMotCtl", " Fixed",     " Removeable",
 	" DTR<=5Mbs",   " DTR>5Mbs",   " DTR>10Mbs", " RotSpdTol>.5%",
 	" dStbOff",     " TrkOff",     " FmtGapReq", " nonMagnetic"
@@ -284,7 +298,7 @@ static void dump_identity (const struct hd_driveid *id)
 		}
 	}
 #endif /* __NEW_HD_DRIVE_ID */
-	printf("\n");	
+	printf("\n");
 	printf("\n * signifies the current active mode\n");
 	printf("\n");
 }
@@ -421,11 +435,11 @@ static int do_blkgetsize (int fd, unsigned long long *blksize64)
 	int		rc;
 	unsigned int	blksize32 = 0;
 
-        if (0 == ioctl(fd, BLKGETSIZE64, blksize64)) {  // returns bytes
-                *blksize64 /= 512;
+	if (0 == ioctl(fd, BLKGETSIZE64, blksize64)) {	// returns bytes
+		*blksize64 /= 512;
 		return 0;
-        }
-	rc = ioctl(fd, BLKGETSIZE64, &blksize32);       // returns sectors
+	}
+	rc = ioctl(fd, BLKGETSIZE64, &blksize32);	// returns sectors
 	if (rc)
 		perror(" BLKGETSIZE failed");
 	return rc;
@@ -568,63 +582,60 @@ static void interpret_standby (unsigned int standby)
 }
 
 struct xfermode_entry {
-    int val;
-    const char *name;
+	int val;
+	const char *name;
 };
 
 static const struct xfermode_entry xfermode_table[] = {
-    { 8,    "pio0" },
-    { 9,    "pio1" },
-    { 10,   "pio2" },
-    { 11,   "pio3" },
-    { 12,   "pio4" },
-    { 13,   "pio5" },
-    { 14,   "pio6" },
-    { 15,   "pio7" },
-    { 16,   "sdma0" },
-    { 17,   "sdma1" },
-    { 18,   "sdma2" },
-    { 19,   "sdma3" },
-    { 20,   "sdma4" },
-    { 21,   "sdma5" },
-    { 22,   "sdma6" },
-    { 23,   "sdma7" },
-    { 32,   "mdma0" },
-    { 33,   "mdma1" },
-    { 34,   "mdma2" },
-    { 35,   "mdma3" },
-    { 36,   "mdma4" },
-    { 37,   "mdma5" },
-    { 38,   "mdma6" },
-    { 39,   "mdma7" },
-    { 64,   "udma0" },
-    { 65,   "udma1" },
-    { 66,   "udma2" },
-    { 67,   "udma3" },
-    { 68,   "udma4" },
-    { 69,   "udma5" },
-    { 70,   "udma6" },
-    { 71,   "udma7" },
-    { 0, NULL }
+	{ 8,    "pio0" },
+	{ 9,    "pio1" },
+	{ 10,   "pio2" },
+	{ 11,   "pio3" },
+	{ 12,   "pio4" },
+	{ 13,   "pio5" },
+	{ 14,   "pio6" },
+	{ 15,   "pio7" },
+	{ 16,   "sdma0" },
+	{ 17,   "sdma1" },
+	{ 18,   "sdma2" },
+	{ 19,   "sdma3" },
+	{ 20,   "sdma4" },
+	{ 21,   "sdma5" },
+	{ 22,   "sdma6" },
+	{ 23,   "sdma7" },
+	{ 32,   "mdma0" },
+	{ 33,   "mdma1" },
+	{ 34,   "mdma2" },
+	{ 35,   "mdma3" },
+	{ 36,   "mdma4" },
+	{ 37,   "mdma5" },
+	{ 38,   "mdma6" },
+	{ 39,   "mdma7" },
+	{ 64,   "udma0" },
+	{ 65,   "udma1" },
+	{ 66,   "udma2" },
+	{ 67,   "udma3" },
+	{ 68,   "udma4" },
+	{ 69,   "udma5" },
+	{ 70,   "udma6" },
+	{ 71,   "udma7" },
+	{ 0, NULL }
 };
 
 static int translate_xfermode(char * name)
 {
-    const struct xfermode_entry *tmp;
-    char *endptr;
-    int val = -1;
+	const struct xfermode_entry *tmp;
+	char *endptr;
+	int val = -1;
 
-
-    for (tmp = xfermode_table; tmp->name != NULL; ++tmp) {
-	if (!strcmp(name, tmp->name))
-		return tmp->val;
-    }
-
-    val = strtol(name, &endptr, 10);
-    if (*endptr == '\0')
-	return val;
-
-    return -1;
+	for (tmp = xfermode_table; tmp->name != NULL; ++tmp) {
+		if (!strcmp(name, tmp->name))
+			return tmp->val;
+	}
+	val = strtol(name, &endptr, 10);
+	if (*endptr == '\0')
+		return val;
+	return -1;
 }
 
 static void interpret_xfermode (unsigned int xfermode)
@@ -951,6 +962,63 @@ void process_dev (char *devname)
 		 && ioctl(fd, HDIO_DRIVE_CMD, &args2))
 			perror(" HDIO_DRIVE_CMD(sleep) failed");
 	}
+#ifdef WIN_SECURITY_UNLOCK
+	if (set_security) {
+#ifndef TASKFILE_OUT
+#define TASKFILE_OUT 4
+#endif
+#ifndef HDIO_DRIVE_TASKFILE
+#define HDIO_DRIVE_TASKFILE 0x031d
+#endif
+		const char *description;
+		struct request {
+			unsigned char	regs[16];
+			unsigned int	flags;
+			unsigned int	phase;
+			unsigned int	cmd;
+			unsigned long	obytes;
+			unsigned long	ibytes;
+			unsigned char	data[512];
+		} request;
+
+		memset(&request, 0, sizeof(request));
+		request.regs[7]	= security_command;
+		request.phase	= TASKFILE_OUT;
+		request.cmd	= IDE_DRIVE_TASK_OUT;
+		request.obytes	= 512;
+		request.data[0]	= (security_master & 0x01);
+		request.data[1]	= (security_mode   & 0x01) << 8;
+
+		// Copy the password into the data section
+		memcpy(&request.data[2], security_password, 32);
+
+		switch (security_command) {
+			case WIN_SECURITY_UNLOCK:
+				description = "SECURITY_UNLOCK";
+				break;
+			case WIN_SECURITY_SET_PASS:
+				description = "SECURITY_SET_PASS";
+				break;
+			case WIN_SECURITY_DISABLE:
+				description = "SECURITY_DISABLE";
+				break;
+			default:
+				description = "NOTHING";
+		}
+		printf(" Issuing %s command, mode=%u/%u, password=\"%s\"\n",
+			description, request.data[1], request.data[0], request.data + 2);
+		if (ioctl(fd,HDIO_DRIVE_TASKFILE,&request))
+			perror("Problem issuing security command");
+	}
+#endif
+#ifdef WIN_SECURITY_FREEZE_LOCK
+	if (set_freeze) {
+		unsigned char args[4] = {WIN_SECURITY_FREEZE_LOCK,0,0,0};
+		printf(" issuing Security Freeze command\n");
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+			perror(" HDIO_DRIVE_CMD(freeze) failed");
+	}
+#endif
 	if (set_seagate) {
 		unsigned char args[4] = {0xfb,0,0,0};
 		if (get_seagate)
@@ -1232,16 +1300,16 @@ identify_abort:	;
 
 void usage_error (int out)
 {
-        FILE *desc;
-        int ret;
+	FILE *desc;
+	int ret;
 
-        if (out == 0) {
-            desc = stdout;
-            ret = 0;
-        } else {
-            desc = stderr;
-            ret = 1;
-        }
+	if (out == 0) {
+		desc = stdout;
+		ret = 0;
+	} else {
+		desc = stderr;
+		ret = 1;
+	}
 
 	fprintf(desc,"\n%s - get/set hard disk parameters - version %s\n\n", progname, VERSION);
 	fprintf(desc,"Usage:  %s  [options] [device] ..\n\n", progname);
@@ -1326,6 +1394,19 @@ void usage_error (int out)
 	" -Z   disable Seagate auto-powersaving mode\n"
 	" -z   re-read partition table\n"
 #endif
+
+#ifdef WIN_SECURITY_FREEZE_LOCK
+	"\nATA Security Options:\n"
+	" --security-freeze 		Freeze security settings (until next reset)\n"
+	" --security-unlock PWD		Unlock drive, using password PWD (DANGEROUS)\n"
+	" --security-set-pass PWD	Lock drive, using password PWD (DANGEROUS)\n"
+	" --security-disable PWD		Disable drive locking, using password PWD (DANGEROUS) \n"
+	" --security-mode MODE		Specify user/master password and high/maximum security \n"
+	"	u	user password, high security \n"
+	"	U	user password, maximum security \n"
+	"	m	master password, high security \n"
+	"	M	master password, maximum security \n"
+#endif
 	);
 	exit(ret);
 }
@@ -1352,6 +1433,24 @@ void usage_error (int out)
 					flag = 0; \
 				else \
 					flag = 1;
+
+#define GET_ASCII_PASSWORD(flag, pwd) tmpstr = pwd; \
+				memset(&pwd,0,sizeof(pwd)); \
+				if (!*p && argc && isgraph(**argv)) \
+					p = *argv++, --argc; \
+				while ((tmpstr - pwd) < 32) { \
+					if (!isgraph(*p)) { \
+						if (*p > 0) { \
+							flag = 0; \
+							printf("Abort: Password contains non-printable characters!"); \
+						} else flag = 1; \
+						break; \
+					} else {\
+						sscanf(p,"%c",(unsigned char *) &tmpstr[0]); \
+						p = p+1; \
+						++tmpstr; \
+					} \
+				}
 
 static int fromhex (unsigned char c)
 {
@@ -1391,7 +1490,7 @@ static int identify_from_stdin (void)
 
 int main(int argc, char **argv)
 {
-	char c, *p;
+	char c, *p, *p1;
 	char *tmpstr;
 	char name[32];
 	int neg;
@@ -1532,6 +1631,7 @@ int main(int argc, char **argv)
 							fprintf (stderr, "-s: missing value\n");
 						break;
 #endif /* CDROM_SELECT_SPEED */
+
 					case 'P':
 						get_prefetch = noisy;
 						noisy = 1;
@@ -1761,6 +1861,61 @@ int main(int argc, char **argv)
 #endif /* HDIO_GET_ACOUSTIC */
 					case 'h':
 						usage_error(0);
+						break;
+					case 'F':
+						set_freeze = 1;
+						break;
+					case '-':
+						p1=p;		//Save Switch-String
+						while (isgraph(*p))
+							p++;	//Move P forward
+#ifdef WIN_SECURITY_FREEZE_LOCK
+						if (0 == strcmp(p1, "security-freeze")) {
+							set_freeze = 1;
+						} else if (0 == strcmp(p1, "security-unlock")) {
+							open_flags = O_RDWR;
+							set_security = 1;
+							security_command = WIN_SECURITY_UNLOCK;
+							GET_ASCII_PASSWORD(set_security,security_password);
+						} else if (0 == strcmp(p1, "security-set-pass")) {
+							open_flags=O_RDWR;
+							set_security = 1;
+							security_command = WIN_SECURITY_SET_PASS;
+							GET_ASCII_PASSWORD(set_security,security_password);
+						} else if (0 == strcmp(p1, "security-disable")) {
+							open_flags = O_RDWR;
+							set_security = 1;
+							security_command = WIN_SECURITY_DISABLE;
+							GET_ASCII_PASSWORD(set_security,security_password);
+						} else if (0 == strcmp(p1, "security-mode")) {
+							if (!*p && argc && isalpha(**argv))
+								p = *argv++, --argc;
+							switch (*p) {
+								case 'u':
+									security_master = 0;
+									security_mode   = 0;
+									break;
+								case 'U':
+									security_master = 0;
+									security_mode   = 1;
+									break;
+								case 'm':
+									security_master = 1;
+									security_mode   = 0;
+									break;
+								case 'M':
+									security_master = 1;
+									security_mode   = 1;
+									break;
+								default:
+									security_master = 0;
+									security_mode   = 0;
+									break;
+							}
+							++p;
+						}
+						break;
+#endif
 					default:
 						usage_error(1);
 				}
