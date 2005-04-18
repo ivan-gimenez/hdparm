@@ -1,3 +1,9 @@
+hdparm (6.1-1) unstable; urgency=low
+
+  * New upstream version
+
+ -- Stephen Gran <sgran@debian.org>  Mon, 18 Apr 2005 14:40:21 -0400
+
 hdparm (6.0-1) unstable; urgency=low
 
   * New upstream version
