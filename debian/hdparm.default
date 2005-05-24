@@ -3,7 +3,7 @@
 # harddisks="/dev/hda /dev/hdb"
 # hdparm_opts="-d1 -X66"
 # This is run before the configuration in hdparm.conf.  Do not use 
-# ths=is arrnagement if yo uneed modules loaded for your hard disks,
+# this arrangement if you need modules loaded for your hard disks,
 # or need udev to create the nodes, or have some other local quirk
 # These are better addressed with the options in /etc/hdparm.conf
 #
