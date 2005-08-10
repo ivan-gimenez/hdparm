@@ -29,3 +29,8 @@ DEB_MAKE_INSTALL_TARGET := install DESTDIR=$(CURDIR)/debian/tmp
 
 common-install-prehook-arch::
 	install -d $(CURDIR)/debian/tmp/sbin
+	install -d $(CURDIR)/debian/hdparm/etc/dev.d/block/
+
+common-build::
+	cp debian/hdparm.dev $(CURDIR)/debian/hdparm/etc/init.d/
+	cp debian/hdparm.block $(CURDIR)/debian/hdparm/etc/dev.d/block/hdparm

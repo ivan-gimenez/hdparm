@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ "$1" = install -o "$1" = upgrade ]; then
+if [ "$1" = install ] || [ "$1" = upgrade ]; then
   if dpkg --compare-versions "$2" lt 5.5-5; then
     update-rc.d -f hdparm remove > /dev/null 2>&1
   fi

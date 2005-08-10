@@ -3,11 +3,11 @@ Section: admin
 Priority: optional
 Maintainer: Stephen Gran <sgran@debian.org>
 Build-Depends: cdbs (>> 0.4.5), debhelper (>= 4.2)
-Standards-Version: 3.6.1
+Standards-Version: 3.6.2
 
 Package: hdparm
 Architecture: any
-Depends: ${shlibs:Depends}
+Depends: ${shlibs:Depends}, lsb-base
 Suggests: apmd
 Replaces: apmd (<= 3.0.2-1.15)
 Description: tune hard disk parameters for high performance
