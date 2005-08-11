@@ -1,8 +1,18 @@
 #!/bin/sh -e
 
+
+case "$0" in
+  *hdparm)
+    FIRST=yes
+    ;;
+  *)
+    FIRST=no
+    ;;
+esac
+
 case "$1" in
   start|restart|reload|force-reload)
-  /etc/init.d/hdparm.dev "$1"
+  FIRST="$FIRST" /etc/init.d/hdparm.dev "$1"
   ;;
   stop)
   exit 0

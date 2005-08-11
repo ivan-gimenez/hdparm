@@ -2,15 +2,6 @@
 
 set -e
 
-case "$0" in
-  *hdparm)
-    FIRST=yes
-    ;;
-  *)
-    FIRST=no
-    ;;
-esac
-
 . /lib/lsb/init-functions
 
 case "$1" in
@@ -230,10 +221,10 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
               fi
               if [ -n "$OPTIONS" ] && [ -b "$DISC" ]; then
                 if [ -n "$ROOTFS" ]; then
-                  if [ "$FIRST" = 'yes' -a "$DISC" != "$ROOTFS" ]; then
+                  if [ "$FIRST" = 'yes' ] && [ "$DISC" != "$ROOTFS" ]; then
                     continue
                   fi
-                  if [ "$FIRST" = 'no' -a "$DISC" = "$ROOTFS" ]; then
+                  if [ "$FIRST" = 'no' ] && [ "$DISC" = "$ROOTFS" ]; then
                     continue
                   fi
                 fi
