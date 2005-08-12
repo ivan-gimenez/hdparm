@@ -1,3 +1,10 @@
+hdparm (6.1-5) unstable; urgency=low
+
+  * Change udev script name to end in .dev (hmm, really should have
+    investigated that more) (closes: #322636)
+
+ -- Stephen Gran <sgran@debian.org>  Fri, 12 Aug 2005 08:56:00 -0400
+
 hdparm (6.1-4) unstable; urgency=low
 
   * Grr, I _would_ have had a working solution, if only I actually installed

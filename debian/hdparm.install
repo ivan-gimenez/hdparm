@@ -2,5 +2,4 @@ debian/20hdparm		etc/apm/event.d/
 debian/tmp/sbin/hdparm
 contrib/*		usr/share/doc/hdparm/contrib
 debian/hdparm.conf	etc/
-debian/hdparm.dev       etc/init.d/
-debian/hdparm.block     etc/dev.d/block/
+debian/hdparm.dev     etc/dev.d/block/

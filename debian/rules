@@ -31,5 +31,5 @@ common-install-prehook-arch::
 	install -d $(CURDIR)/debian/tmp/sbin
 	install -d $(CURDIR)/debian/hdparm/etc/dev.d/block/
 binary-predeb/hdparm::
-	chmod 755 $(CURDIR)/debian/hdparm/etc/dev.d/block/hdparm.block
+	chmod 755 $(CURDIR)/debian/hdparm/etc/dev.d/block/hdparm.dev
 	chmod 755 $(CURDIR)/debian/hdparm/etc/apm/event.d/20hdparm
