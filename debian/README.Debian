@@ -51,7 +51,7 @@ Some problems with udev and module loading:
   load modules and create devices.
 
   hdparm now supports udev created device nodes, using the script 
-  /etc/dev.d/block/hdparm.  This allows users to set up regular stanzas in
+  /etc/udev/hdparm.rules.  This allows users to set up regular stanzas in
   /etc/hdparm.conf, that will fail the first time (as the device nodes
   don't yet exist) but will be properly set up when udev gets to them.
   

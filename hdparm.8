@@ -237,6 +237,9 @@ have the ability to speed down the head movements to reduce their noise output.
 The possible values are between 0 and 254. 128 is the most quiet (and therefore
 slowest) setting and 254 the fastest (and loudest). Some drives have only two 
 levels (quiet / fast), while others may have different levels between 128 and 254.
+At the moment, most drives only support 3 options, off, quiet, and fast.  These
+have been assigned the values 0, 128, and 254 at present, respectively, but integer
+space has been left for future expansion if this changes.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I -n
@@ -494,6 +497,9 @@ Only useful in combination with --security-unlock, --security-set-pass, or --sec
         U       user password, maximum security
         m       master password, high security
         M       master password, maximum security
+.SH "FILES"
+.LP
+/etc/hdparm.conf
 .SH BUGS
 As noted above, the
 .B -m sectcount

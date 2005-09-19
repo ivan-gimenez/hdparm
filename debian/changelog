@@ -1,3 +1,10 @@
+hdparm (6.1-6) unstable; urgency=low
+
+  * Migrate from dev.d to udev/hdparm.rules (closes: #329026)
+  * remerge manpage patch for -M (closes: #325237)
+
+ -- Stephen Gran <sgran@debian.org>  Mon, 19 Sep 2005 08:19:27 +0100
+
 hdparm (6.1-5) unstable; urgency=low
 
   * Change udev script name to end in .dev (hmm, really should have
