@@ -88,7 +88,8 @@ eval_value()
       set_option "$2"1
       ;;
     *)
-      return 1
+      log_failure_msg "Unknown Value for $2: $1"
+      exit 1
       ;;
   esac
 }

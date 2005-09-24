@@ -1,3 +1,11 @@
+hdparm (6.1-7) unstable; urgency=low
+
+  * Make eval_value fail if unknown value passed to it (closes: #329443)
+  * Get rid of deprecated dev.d/ file (closes: #329450)
+  * Add /etc/udev/rules.d/ to package (closes: #329731)
+
+ -- Stephen Gran <sgran@debian.org>  Sat, 24 Sep 2005 01:03:51 +0100
+
 hdparm (6.1-6) unstable; urgency=low
 
   * Migrate from dev.d to udev/hdparm.rules (closes: #329026)
