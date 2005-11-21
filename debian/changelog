@@ -1,3 +1,12 @@
+hdparm (6.3-1) unstable; urgency=low
+
+  * New Upstream Version (closes: #340171)
+  * Init dependency information added (closes: #335309)
+  * Add support for new user-master option to init script, and document same
+  * Switch to dpatch, and start adding tiny patches there
+
+ -- Stephen Gran <sgran@debian.org>  Mon, 21 Nov 2005 23:44:43 +0000
+
 hdparm (6.1-7) unstable; urgency=low
 
   * Make eval_value fail if unknown value passed to it (closes: #329443)

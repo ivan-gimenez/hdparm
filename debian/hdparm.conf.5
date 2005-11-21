@@ -117,7 +117,7 @@ acoustic_management
 \fB\-p\fR Set the chipset PIO mode
  chipset_pio_mode
 .TP
-\fB-F, --security-freeze\fR Freeze the drive's security status
+\fB--security-freeze\fR Freeze the drive's security status
 security_freeze
 .TP
 \fB--security-unlock\fR Unlock the drive's security
@@ -129,8 +129,11 @@ security_pass = password
 \fB--security-disable\fR Disable drive locking
 security_disable
 .TP
-\fB--security-mode\fR Set the security mode
+\fB--user-master\fR Specifies which password to select
 security_mode = u
+.TP
+\fB--security-mode\fR Set the security mode
+security_mode = h
 .TP
 Root file systems.
 Please see README.Debian for details.

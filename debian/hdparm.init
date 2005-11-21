@@ -1,5 +1,14 @@
 #!/bin/sh
 
+### BEGIN INIT INFO
+# Provides:          hdparm
+# Required-Start:    mountvirtfs
+# Should-Start:      udev
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:      0 6
+### END INIT INFO
+
 set -e
 
 . /lib/lsb/init-functions
@@ -206,6 +215,9 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
             security_disable)
               set_option --security-disable $VALUE
              ;;
+            user-master)
+              set_option --user-master $VALUE
+              ;;
             security_mode)
               set_option --security-mode $VALUE
              ;;
@@ -269,7 +281,7 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
               set_option -Z
               ;;
             security_freeze) 
-              set_option -F
+              set_option --security_freeze
               ;;
             *)
               log_failure_msg "unknown option $KEY"
