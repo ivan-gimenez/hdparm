@@ -1,3 +1,9 @@
+hdparm (6.3-2) unstable; urgency=low
+
+  * Brown paper bag release - add dpatch to B-D (closes:#340595)
+
+ -- Stephen Gran <sgran@debian.org>  Thu, 24 Nov 2005 13:21:52 +0000
+
 hdparm (6.3-1) unstable; urgency=low
 
   * New Upstream Version (closes: #340171)
