@@ -1,3 +1,9 @@
+hdparm (6.3-3) unstable; urgency=low
+
+  * Init script fixup: s/_/-/ (closes: #340685)
+
+ -- Stephen Gran <sgran@debian.org>  Fri, 25 Nov 2005 09:15:46 +0000
+
 hdparm (6.3-2) unstable; urgency=low
 
   * Brown paper bag release - add dpatch to B-D (closes:#340595)

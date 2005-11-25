@@ -281,7 +281,7 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
               set_option -Z
               ;;
             security_freeze) 
-              set_option --security_freeze
+              set_option --security-freeze
               ;;
             *)
               log_failure_msg "unknown option $KEY"
