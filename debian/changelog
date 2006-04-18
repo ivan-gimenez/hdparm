@@ -1,3 +1,14 @@
+hdparm (6.6-1) unstable; urgency=low
+
+  * New upstream release
+  * man page fixups for -a (closes: #362670)
+  * Change to using comparison (==) rather than assignment (=) operators in
+    hdparm's udev rules.
+  * Stop printing nulls (closes: #363132)
+  * Add APM/ACPI discussion to README.Debian (closes: #327442)
+
+ -- Stephen Gran <sgran@debian.org>  Tue, 18 Apr 2006 13:28:33 +0100
+
 hdparm (6.3-3) unstable; urgency=low
 
   * Init script fixup: s/_/-/ (closes: #340685)

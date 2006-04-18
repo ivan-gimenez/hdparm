@@ -26,6 +26,13 @@ Multiple disks with the same options:
   needed to better integrate this option.  Hopefully I'll have the time soon 
   (or somebody will send the patches :)
   
+APM and ACPI:
+  APM and ACPI are handled somewhat differently in Debian.  If you have a
+  machine that uses APM, there is a script in /etc/apmd that you can use to
+  have APM events trigger hdparm commands.  For ACPI users, I recommend a
+  package like powersaved, that will call hdparm as appropriate for ACPI
+  events.
+
 Some problems with udev and module loading:
   
   hdparm's init script is set to run at /etc/rcS.d/S07 because there have
