@@ -1,3 +1,27 @@
+hdparm (6.6-4) unstable; urgency=low
+
+  * hdparm-dbg should Depend on hdparm, how about?
+
+ -- Stephen Gran <sgran@debian.org>  Thu, 28 Sep 2006 11:06:31 +0100
+
+hdparm (6.6-3) unstable; urgency=low
+
+  * s/mountvirtfs/mountdevsubfs/ in init script (closes: #386340)
+  * Some init dependency tuning
+  * Apply patch from Norbert Buchmuller <norbi.spam@nix.hu> to make it safer
+    to run hdparm on a degraded software raid array (closes: #366333)
+  * Split out the old unformatted changelog entries to quiet lintian
+
+ -- Stephen Gran <sgran@debian.org>  Tue, 19 Sep 2006 00:44:08 +0100
+
+hdparm (6.6-2) unstable; urgency=low
+
+  * Add -dbg package
+    This requires incrementing the versioned dep on debhelper
+  * Increment Standards-Version to 3.7.2 (no changes)
+
+ -- Stephen Gran <sgran@debian.org>  Thu, 18 May 2006 23:59:56 +0100
+
 hdparm (6.6-1) unstable; urgency=low
 
   * New upstream release
@@ -431,22 +455,3 @@ hdparm (3.1-2) unstable; urgency=low
   * Upgrade to 3.1.  Change to "Package format of the month"(TM)
 
  -- Steve Dunham <dunham@gdl.msu.edu>  Thu, 10 Oct 1996 19:51:22 -0800
-
-old changelog
-
-23-December-1994 Bruce Perens <Bruce@Pixar.com>
-        Added Debian GNU/Linux package maintenance system files, and configured
-        for Debian.
-
-22-June-1995 Guy R. Thomas <gthomas@native-ed.bc.ca>
-        Took over maintenance of package.  New Debian revision.
-
-22-June-1995 Guy R. Thomas <gthomas@native-ed.bc.ca>
-        Upgraded to current version.  ( May 31, 1995 )
-
-25-June-1996 Steve Dunham <dunham@gdl.msu.edu>
-        Upgraded to current version.
-
-Local variables:
-mode: debian-changelog
-End:

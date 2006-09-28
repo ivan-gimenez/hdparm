@@ -2,16 +2,26 @@
 
 ### BEGIN INIT INFO
 # Provides:          hdparm
-# Required-Start:    mountvirtfs
-# Should-Start:      udev
+# Required-Start:    mountdevsubfs
 # Required-Stop:
+# Should-Start:      udev
 # Default-Start:     S
 # Default-Stop:      0 6
+# Short-Description: Tune IDE hard disks
 ### END INIT INFO
 
 set -e
 
 . /lib/lsb/init-functions
+
+# Defaults for configuration variables.
+RAID_WORKAROUND=no
+
+# Source the defaults file.
+[ -e /etc/default/hdparm ] && . /etc/default/hdparm
+
+raid_speed_limit_min=
+raid_speed_limit_max=
 
 case "$0" in
   *hdparm)
@@ -49,18 +59,41 @@ if [ "$FORCE_RUN" != 'yes' ]; then
 
   raidstat=OK
   if [ -e /proc/mdstat ]; then
-    if grep -iq resync /proc/mdstat; then
+    if egrep -iq "resync|repair|recover|check" /proc/mdstat; then
       raidstat=RESYNC
     fi
   elif [ -e /proc/rd/status ]; then
     raidstat=`cat /proc/rd/status`
   fi
 
-  if ! [ "$raidstat" = 'OK' ]; then
+  if ! [ "$raidstat" = 'OK' ] && [ "$RAID_WORKAROUND" != "yes" ]; then
     log_failure_msg "RAID status not OK.  Exiting."
     exit 0
   fi
 fi
+
+slow_down_raid_sync()
+{
+  if [ -f /proc/sys/dev/raid/speed_limit_min ]; then
+    raid_speed_limit_min=`cat /proc/sys/dev/raid/speed_limit_min`
+    echo 0 >/proc/sys/dev/raid/speed_limit_min
+  fi
+  if [ -f /proc/sys/dev/raid/speed_limit_max ]; then
+    raid_speed_limit_max=`cat /proc/sys/dev/raid/speed_limit_max`
+    echo 0 >/proc/sys/dev/raid/speed_limit_max
+  fi
+  sleep 2
+}
+
+undo_slow_down_raid_sync()
+{
+  if [ -f /proc/sys/dev/raid/speed_limit_min ] && [ "x$raid_speed_limit_min" != "x" ]; then
+    echo $raid_speed_limit_min >/proc/sys/dev/raid/speed_limit_min
+  fi
+  if [ -f /proc/sys/dev/raid/speed_limit_max ] && [ "x$raid_speed_limit_max" != "x" ]; then
+    echo $raid_speed_limit_max >/proc/sys/dev/raid/speed_limit_max
+  fi
+}
 
 set_option()
 {
@@ -104,6 +137,11 @@ eval_value()
 }
 
 WAS_RUN=0
+
+# Turn off RAID synchronisation if needed and asked for.
+if [ "$raidstat" != 'OK' ] && [ "$RAID_WORKAROUND" = "yes" ]; then
+  slow_down_raid_sync
+fi
 
 # Get blocks as far as the drive's write cache.
 /bin/sync
@@ -226,6 +264,7 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
              ;; 
             *)
               log_failure_msg "Unknown option $KEY"
+              undo_slow_down_raid_sync
               exit 1
               ;;
           esac
@@ -235,6 +274,7 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
             '}')
               if [ -z "$DISC" ] && [ "$WAS_RUN" != '1' ]; then
                 log_failure_msg "No disk enabled. Exiting"
+                undo_slow_down_raid_sync
                 exit 1
               fi
               if [ -n "$OPTIONS" ] && [ -b "$DISC" ]; then
@@ -285,12 +325,14 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
               ;;
             *)
               log_failure_msg "unknown option $KEY"
+              undo_slow_down_raid_sync
               exit 1
               ;;
           esac
           ;;
        *)
          log_failure_msg "unknown separator $SEP"
+         undo_slow_down_raid_sync
          exit 1
          ;;
       esac
@@ -300,8 +342,6 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
       WAS_RUN=1
     fi
   done
-
-  [ -f /etc/default/hdparm ] && . /etc/default/hdparm
 
   if [ -n "$harddisks" ] && [ -n "$hdparm_opts" ] && [ "$UDEV" = 'no' ]; then
     ret=0
@@ -319,5 +359,10 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
     log_end_msg 0
   fi
 }
+
+# Turn back on RAID synchronisation if we turned it off.
+if [ "$raidstat" != 'OK' ] && [ "$RAID_WORKAROUND" = "yes" ]; then
+  undo_slow_down_raid_sync
+fi
 
 exit 0
