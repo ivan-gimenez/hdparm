@@ -1237,7 +1237,7 @@ consecutively in two runs (assuming the segfault isn't followed by an oops.
 		unsigned char args[4] = {WIN_CHECKPOWERMODE1,0,0,0};
 		const char *state;
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args)
-		 && (args[0] == WIN_CHECKPOWERMODE2) /* try again with 0x98 */
+		 && (args[0] = WIN_CHECKPOWERMODE2) /* try again with 0x98 */
 		 && ioctl(fd, HDIO_DRIVE_CMD, &args)) {
 			if (errno != EIO || args[0] != 0 || args[1] != 0)
 				state = "unknown";

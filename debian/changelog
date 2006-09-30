@@ -1,3 +1,9 @@
+hdparm (6.6-5) unstable; urgency=low
+
+  * Make -C actually try a second time (closes: #390079)
+
+ -- Stephen Gran <sgran@debian.org>  Sat, 30 Sep 2006 15:08:01 +0100
+
 hdparm (6.6-4) unstable; urgency=low
 
   * hdparm-dbg should Depend on hdparm, how about?
