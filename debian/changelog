@@ -1,3 +1,11 @@
+hdparm (6.7-1) unstable; urgency=low
+
+  * New upstream version
+  * Fix override disparity for -dbg package
+  * Versioned Build-Dep on dpkg-dev since it now uses ${binary:Version}
+
+ -- Stephen Gran <sgran@debian.org>  Thu,  5 Oct 2006 22:37:59 +0100
+
 hdparm (6.6-5) unstable; urgency=low
 
   * Make -C actually try a second time (closes: #390079)
