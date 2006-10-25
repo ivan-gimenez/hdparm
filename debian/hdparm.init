@@ -223,6 +223,9 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
             spindown_time) 
               set_option -S$VALUE
               ;;
+            poweron_standby) 
+              eval_value $VALUE -s
+              ;;
             interrupt_unmask) 
               eval_value $VALUE -u
               ;;

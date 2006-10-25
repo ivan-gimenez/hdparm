@@ -1,3 +1,10 @@
+hdparm (6.9-1) unstable; urgency=low
+
+  * New upstream version
+  * Add new -s option to init script, conf file, and manpage
+
+ -- Stephen Gran <sgran@debian.org>  Wed, 25 Oct 2006 16:24:22 +0100
+
 hdparm (6.8-1) unstable; urgency=low
 
   * New upstream version
