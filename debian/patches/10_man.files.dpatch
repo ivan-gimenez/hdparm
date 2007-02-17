@@ -8,7 +8,7 @@
 
 --- hdparm/hdparm.8.old	2005-11-21 23:40:00.000000000 +0000
 +++ hdparm/hdparm.8	2005-11-21 23:40:18.000000000 +0000
-@@ -527,6 +527,8 @@
+@@ -551,6 +551,8 @@
          m       maximum security
  
  .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
