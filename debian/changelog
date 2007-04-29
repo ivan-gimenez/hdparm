@@ -1,3 +1,11 @@
+hdparm (7.1-1) unstable; urgency=low
+
+  * New upstream version
+  * Add debian/patches/40_hdparm_no_strip.dpatch to keep build system from
+    stripping hdparm binary before dh_strip can get to it.
+
+ -- Stephen Gran <sgran@debian.org>  Sun, 29 Apr 2007 03:02:39 +0100
+
 hdparm (6.9-2) unstable; urgency=low
 
   * Typo fix in manpage (closes: #396809)

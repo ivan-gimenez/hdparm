@@ -1,0 +1,17 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## 40_hdparm_no_strip.dpatch by Stephen Gran <sgran@debian.org>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: Don't strip the binary during build, let dh_strip do it
+
+@DPATCH@
+--- a/Makefile	(revision 428)
++++ b/Makefile	(working copy)
+@@ -27,7 +27,6 @@
+ 
+ hdparm: hdparm.h $(OBJS)
+ 	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
+-	strip hdparm
+  
+ install: all hdparm.8
+ 	if [ ! -z $(DESTDIR) ]; then $(INSTALL_DIR) $(DESTDIR) ; fi
