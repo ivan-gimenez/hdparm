@@ -1,0 +1,28 @@
+#! /bin/sh /usr/share/dpatch/dpatch-run
+## 50_ENOTTY.dpatch by Stephen Gran <sgran@debian.org>, based on the 
+## patch sent by Geert Uytterhoeven <Geert.Uytterhoeven@sonycom.com>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: hdparm expects the HDIO_DRIVE_CMD(null) ioctl to either succeed, 
+## DP: or to fail with errno EINVAL.  However:
+## DP: - ATA/SATA handle HDIO_DRIVE_CMD(null) (and a few other variants)
+## DP:   => fine for hdparm
+## DP: - SCSI doesn't handle HDIO_DRIVE_CMD(null), and returns EINVAL
+## DP:   => fine for hdparm
+## DP: - If a block device doesn't support the ioctl, the block layer returns ENOTTY
+## DP:   => hdparm error message
+
+@DPATCH@
+Index: hdparm.c
+===================================================================
+--- a/hdparm.c	(revision 451)
++++ b/hdparm.c	(working copy)
+@@ -271,7 +271,7 @@
+ 	fsync (fd);				/* flush buffers */
+ 	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
+ 		perror("BLKFLSBUF failed");
+-	if (do_drive_cmd(fd, NULL) && errno != EINVAL)	/* await completion */
++	if (do_drive_cmd(fd, NULL) && errno != EINVAL && errno != ENOTTY)	/* await completion */
+ 		perror("HDIO_DRIVE_CMD(null) (wait for flush complete) failed");
+ }
+ 

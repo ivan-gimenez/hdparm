@@ -1,3 +1,11 @@
+hdparm (7.3-1) unstable; urgency=low
+
+  * New upstream version
+    - partial fix for #423186, rest patched, so (closes: #423186)
+  * Stop installing useless stop links in rc0 and rc6 (closes: #422795)
+
+ -- Stephen Gran <sgran@debian.org>  Thu, 31 May 2007 02:34:11 +0100
+
 hdparm (7.1-2) unstable; urgency=low
 
   * Don't ship a binary in contrib/ (even though upstream puts it in the

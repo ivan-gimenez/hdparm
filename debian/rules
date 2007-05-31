@@ -19,7 +19,7 @@
 
 DEB_DH_INSTALLINIT_ARGS := '--no-start'
 #DEB_DH_LINK_ARGS := ../init.d/hdparm /etc/rcS.d/S07hdparm.first
-DEB_UPDATE_RCD_PARAMS := 'start 07 S . stop 75 0 6 . '
+DEB_UPDATE_RCD_PARAMS := 'start 07 S . '
 DEB_FIXPERMS_EXCLUDE:= 20hdparm
 
 include /usr/share/cdbs/1/rules/dpatch.mk
