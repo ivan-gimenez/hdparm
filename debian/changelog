@@ -1,3 +1,11 @@
+hdparm (8.3-1) unstable; urgency=low
+
+  * New upstream release
+  * easier config of spindown time (closes: #462766)
+  * Update Standards-Version (no changes)
+
+ -- Stephen Gran <sgran@debian.org>  Tue, 19 Feb 2008 22:39:32 +0000
+
 hdparm (7.7-1) unstable; urgency=low
 
   * New upstream version

@@ -121,7 +121,8 @@
 #define MEDIA_REMOVABLE		0x0080
 #define DRIVE_NOT_REMOVABLE	0x0040  /* bit obsoleted in ATA 6 */
 #define INCOMPLETE		0x0004
-#define CFA_SUPPORT_VAL		0x848a	/* 848a=CFA feature set support */
+#define CFA_SUPPORT_VAL1	0x848a	/* 848a=CFA feature set support */
+#define CFA_SUPPORT_VAL2	0x844a	/* 844a=also means CFA feature set support */
 #define DRQ_RESPONSE_TIME	0x0060
 #define DRQ_3MS_VAL		0x0000
 #define DRQ_INTR_VAL		0x0020
@@ -396,10 +397,10 @@ static const char *feat_3_str[16] = {
 	"unknown 119[8]",				/* word 119 bit  8 */
 	"unknown 119[7]",				/* word 119 bit  7 */
 	"unknown 119[6]",				/* word 119 bit  6 */
-	"unknown 119[5]",				/* word 119 bit  5 */
+	"Free-fall Control feature set",		/* word 119 bit  5 */
 	"Segmented DOWNLOAD_MICROCODE",			/* word 119 bit  4 */
 	"{READ,WRITE}_DMA_EXT_GPL commands",		/* word 119 bit  3 */
-	"WRITE_UNCORRECTABLE command",			/* word 119 bit  2 */
+	"WRITE_UNCORRECTABLE_EXT command",		/* word 119 bit  2 */
 	"Write-Read-Verify feature set",		/* word 119 bit  1 */
 	"Disable Data Transfer After Error Detection"	/* word 119 bit  0 (ref: 2014DT)*/
 };
@@ -444,6 +445,7 @@ static const char *feat_sata0_str[16] = {
 /* use cmd_feat_str[] to display what commands and features have
  * been enabled with words 85-87 
  */
+#define WWN_SUP         0x100 /* 1=support; 0=not supported */
 
 /* words 89, 90, SECU ERASE TIME */
 #define ERASE_BITS		0x00ff
@@ -483,10 +485,10 @@ const char *secu_str[] = {
 
 /* word 206: SMART command transport (SCT) */
 static const char *feat_sct_str[16] = {
-	"unknown 206[15]",				/* word 206 bit 15 */
-	"unknown 206[14]",				/* word 206 bit 14 */
-	"unknown 206[13]",				/* word 206 bit 13 */
-	"unknown 206[12]",				/* word 206 bit 12 */
+	"unknown 206[15] (vendor specific)",		/* word 206 bit 15 */
+	"unknown 206[14] (vendor specific)",		/* word 206 bit 14 */
+	"unknown 206[13] (vendor specific)",		/* word 206 bit 13 */
+	"unknown 206[12] (vendor specific)",		/* word 206 bit 12 */
 	"unknown 206[11]",				/* word 206 bit 11 */
 	"unknown 206[10]",				/* word 206 bit 10 */
 	"unknown 206[9]",				/* word 206 bit  9 */
@@ -601,7 +603,7 @@ void identify (__u16 *id_supplied)
 	__u8  chksum = 0;
 	__u32 ll, mm, nn;
 	__u64 bb, bbbig; /* (:) */
-	int transport, is_cfa = 0;
+	int transport, is_cfa = 0, atapi_has_dmadir = 0, sdma_ok;
 
 	memcpy(val, id_supplied, sizeof(val));
 
@@ -616,11 +618,11 @@ void identify (__u16 *id_supplied)
 	if(!(val[GEN_CONFIG] & NOT_ATA)) {
 		dev = ATA_DEV;
 		printf("ATA device, with ");
-	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL) {
+	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL1 || val[GEN_CONFIG]==CFA_SUPPORT_VAL2) {
 		is_cfa = 1;
 		dev = ATA_DEV;
 		like_std = 4;
-		printf("CompactFlash ATA device, with ");
+		printf("CompactFlash ATA device\n");
 	} else if(!(val[GEN_CONFIG] & NOT_ATAPI)) {
 		dev = ATAPI_DEV;
 		eqpt = (val[GEN_CONFIG] & EQPT_TYPE) >> SHIFT_EQPT;
@@ -630,10 +632,11 @@ void identify (__u16 *id_supplied)
 		printf("Unknown device type:\n\tbits 15&14 of general configuration word 0 both set to 1.\n");
 		exit(EINVAL);
 	}
-	if(!(val[GEN_CONFIG] & MEDIA_REMOVABLE))
-		printf("non-");
-	printf("removable media\n");
-
+	if (!is_cfa) {
+		if(!(val[GEN_CONFIG] & MEDIA_REMOVABLE))
+			printf("non-");
+		printf("removable media\n");
+	}
 
 	/* Info from the specific configuration word says whether or not the
 	 * ID command completed correctly.  It is only defined, however in
@@ -681,16 +684,31 @@ void identify (__u16 *id_supplied)
 	printf("Standards:");
 	if(eqpt != CDROM) {
 		//printf("major=%04x minor=%04x\n", val[MAJOR], val[MINOR]);
+		const char * used = 0;
 		if(val[MINOR] && (val[MINOR] <= MINOR_MAX)) {
 			if(like_std < 3)
 				like_std = 3;
 			std = actual_ver[val[MINOR]];
 			if (std)
-				printf("\n\tUsed: %s ",minor_str[val[MINOR]]);
-		} else if (val[MINOR] == 0x107) {
-			std = 8;
-			printf("\n\tUsed: %s ", "ATA8-ACS revision 2d");
+				used = minor_str[val[MINOR]];
+		} else {
+			/* check for recent ATA-8 revision codes (not added to
+			 * actual_ver/minor_str to avoid large sparse tables) */
+			switch (val[MINOR]) {
+			  case 0x0027: used = "ATA-8-ACS revision 3c"; break;
+			  case 0x0033: used = "ATA-8-ACS revision 3e"; break;
+			  case 0x0042: used = "ATA-8-ACS revision 3f"; break;
+			  case 0x0052: used = "ATA-8-ACS revision 3b"; break;
+			  case 0x0107: used = "ATA-8-ACS revision 2d"; break;
+			}
+			if (used)
+				std = 8;
 		}
+		if (used)
+			printf("\n\tUsed: %s ", used);
+		else if (val[MINOR] >= 0x001f) /* first "reserved" value possibly later used by ATA-8 */
+			printf("\n\tUsed: unknown (minor revision code 0x%04x) ", val[MINOR]);
+
 		/* looks like when they up-issue the std, they obsolete one;
 		 * thus, only the newest 4 issues need be supported.
 		 * (That's what "kk" and "min_std" are all about) */
@@ -718,7 +736,10 @@ void identify (__u16 *id_supplied)
 		 * the words from the next level up.  It happens.
 		 */
 		if(like_std < std) like_std = std;
-		if(((std == 5) || (!std && (like_std < 6))) &&
+		if(((std == 7) || (!std && (like_std < 8))) &&
+		   (val[SCT_SUPP] & 0x1)) {
+			like_std = 8;
+		} else if(((std == 5) || (!std && (like_std < 6))) &&
 		   ( (((val[CMDS_SUPP_1] & VALID) == VALID_VAL) &&
 		     ((val[CMDS_SUPP_1] & CMDS_W83) > 0x00ff)) ||
 		    (((val[CMDS_SUPP_2] & VALID) == VALID_VAL) &&
@@ -935,17 +956,11 @@ void identify (__u16 *id_supplied)
 			else	printf("?\n");
 		}
 		if((like_std > 3) && (val[CMDS_SUPP_1] & 0x0008)) {
-			/* We print out elsewhere whether the APM feature is enabled or
-			   not.  If it's not enabled, let's not repeat the info; just print
-			   nothing here. */
 			printf("\tAdvanced power management level: ");
-			if ( (val[ADV_PWR] & 0xFF00) == 0x4000 ) {
-				__u8 apm_level = val[ADV_PWR] & 0x00FF;
-
-				printf("%u (0x%x)\n", apm_level, apm_level);
-			} else {
-				printf("unknown setting (0x%04x)\n", val[ADV_PWR]);
-			}
+			if (val[CMDS_EN_1] & 0x0008)
+				printf("%u\n", val[ADV_PWR] & 0xff);
+			else
+				printf("disabled\n");
 		}
 		if(like_std > 5) {
 			if(val[ACOUSTIC]) {
@@ -964,24 +979,42 @@ void identify (__u16 *id_supplied)
 		}
 	}
 
-	/* DMA stuff. Check that only one DMA mode is selected. */
+	/* Some SATA-ATAPI devices use a different interpretation of IDENTIFY words for DMA modes */
+	if (dev == ATAPI_DEV && val[62] & 0x8000) {
+		atapi_has_dmadir = 1;
+		sdma_ok = 0;  /* word 62 has been re-purposed for non-sdma mode reporting */
+		printf("\tDMADIR bit required in PACKET commands\n");
+	} else {
+		__u8 w62 = val[62], hi = w62 >> 8, lo = w62;
+		if (!w62 || (lo & 0xf8))
+			sdma_ok = 0;
+		else if (hi && hi != 1 && hi != 2 && hi != 4)
+			sdma_ok = 0;
+		else
+			sdma_ok = 1;
+	}
+
 	printf("\tDMA: ");
-	if(!(val[CAPAB_0] & DMA_SUP)) {
+	/* DMA stuff. Check that only one DMA mode is selected. */
+	if(!atapi_has_dmadir && !(val[CAPAB_0] & DMA_SUP)) {
 		printf("not supported\n");
 	} else {
-		if(val[DMA_MODE] && !val[SINGLE_DMA] && !val[MULTI_DMA]) {
+		if(val[DMA_MODE] && !val[62] && !val[MULTI_DMA]) {
 			printf("sdma%u",(val[DMA_MODE] & MODE) >> 8);
 		} else {
-			if(val[SINGLE_DMA]) {
-				jj = val[SINGLE_DMA];   kk = val[SINGLE_DMA] >> 8;
+			if(sdma_ok) {
+				kk = val[62] >> 8;
+				jj = val[62];
 				err_dma += mode_loop(jj,kk,'s',&have_mode);
 			}
 			if(val[MULTI_DMA]) {
-				jj = val[MULTI_DMA];   kk = val[MULTI_DMA] >> 8;
+				kk = val[MULTI_DMA] >> 8;
+				jj = atapi_has_dmadir ? (val[62] >> 7) & 7 : val[MULTI_DMA];
 				err_dma += mode_loop(jj,kk,'m',&have_mode);
 			}
 			if((val[WHATS_VALID] & OK_W88) && val[ULTRA_DMA]) {
-				jj = val[ULTRA_DMA];   kk = val[ULTRA_DMA] >> 8;
+				kk = val[ULTRA_DMA] >> 8;
+				jj = atapi_has_dmadir ? val[62] & 0x7f : val[ULTRA_DMA];
 				err_dma += mode_loop(jj,kk,'u',&have_mode);
 			}
 			if(err_dma || !have_mode)
@@ -1087,6 +1120,13 @@ void identify (__u16 *id_supplied)
 			printf("\n");
 		}
 	}
+	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) 
+    {
+		printf("Logical Unit WWN Device Identifier: %x%x%x%x\n", val[108], val[109], val[110], val[111]);
+		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
+		printf("\tIEEE OUI\t: %x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
+		printf("\tUnique ID\t: %x%x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
+    }
 
 	/* reset result */
 	if((val[HWRST_RSLT] & VALID) == VALID_VAL) {

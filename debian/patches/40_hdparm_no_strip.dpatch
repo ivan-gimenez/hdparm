@@ -7,11 +7,11 @@
 @DPATCH@
 --- a/Makefile	(revision 428)
 +++ b/Makefile	(working copy)
-@@ -27,7 +27,6 @@
+@@ -26,7 +26,6 @@
  
- hdparm: hdparm.h $(OBJS)
+ hdparm: hdparm.h sgio.h $(OBJS)
  	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
 -	strip hdparm
-  
- install: all hdparm.8
- 	if [ ! -z $(DESTDIR) ]; then $(INSTALL_DIR) $(DESTDIR) ; fi
+ 
+ sgio.o:	sgio.h
+ 

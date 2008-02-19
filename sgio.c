@@ -13,7 +13,9 @@
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
 
-#include "hdparm.h"
+//#include "hdparm.h"
+#include "sgio.h"
+
 extern int verbose;
 
 #define SG_READ			0
@@ -32,8 +34,6 @@ extern int verbose;
 #define SG_ATA_PROTO_DMA	( 6 << 1)
 #define SG_ATA_PROTO_UDMA_IN	(11 << 1) /* not yet supported in libata */
 #define SG_ATA_PROTO_UDMA_OUT	(12 << 1) /* not yet supported in libata */
-
-#define ATA_USING_LBA		(1 << 6)
 
 /*
  * Taskfile layout for SG_ATA_16 cdb:
@@ -74,7 +74,7 @@ void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect)
 		} else {
 			tf->hob.lbal = lba >> 24;
 			tf->hob.lbam = lba >> 32;
-			tf->hob.lbah = lba >> 36;
+			tf->hob.lbah = lba >> 40;
 			tf->is_lba48 = 1;
 		}
 	}
@@ -90,9 +90,9 @@ __u64 tf_to_lba (struct ata_tf *tf)
 	__u32 lba24, lbah;
 	__u64 lba64;
 
-	lba24 = (tf->lob.lbah << 16) | (tf->lob.lbam << 8) | (tf->lob.lbah);
+	lba24 = (tf->lob.lbah << 16) | (tf->lob.lbam << 8) | (tf->lob.lbal);
 	if (tf->is_lba48)
-		lbah = (tf->hob.lbah << 16) | (tf->hob.lbam << 8) | (tf->hob.lbah);
+		lbah = (tf->hob.lbah << 16) | (tf->hob.lbam << 8) | (tf->hob.lbal);
 	else
 		lbah = (tf->dev & 0x0f);
 	lba64 = (((__u64)lbah) << 24) | (__u64)lba24;
@@ -140,6 +140,11 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	memset(&cdb, 0, sizeof(cdb));
 	cdb[ 0] = SG_ATA_16;
 	cdb[ 1] = data ? (rw ? SG_ATA_PROTO_PIO_OUT : SG_ATA_PROTO_PIO_IN) : SG_ATA_PROTO_NON_DATA;
+#if 0
+	if (data_bytes && (data_bytes % 512) == 0) {
+		cdb[1] = SG_ATA_PROTO_DMA;
+	}
+#endif
 	cdb[ 2] = SG_CDB2_CHECK_COND;
 	if (data) {
 		cdb[2] |= SG_CDB2_TLEN_NSECT | SG_CDB2_TLEN_SECTORS;
@@ -181,20 +186,27 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 			perror("ioctl(fd,SG_IO)");
 		return -1;	/* SG_IO not supported */
 	}
-	if (verbose) {
+	if (verbose)
 		fprintf(stderr, "SG_IO: ATA_16 status=0x%x, host_status=0x%x, driver_status=0x%x\n",
 			io_hdr.status, io_hdr.host_status, io_hdr.driver_status);
-	}
+
 	if (io_hdr.host_status || io_hdr.driver_status != SG_DRIVER_SENSE
 	 || (io_hdr.status && io_hdr.status != SG_CHECK_CONDITION))
 	{
 	  	errno = EIO;
 		return -1;
 	}
+	if (verbose)
+		fprintf(stderr, "SG_IO: sb[] = {%02x %02x %02x %02x %02x %02x %02x %02x}\n",
+			sb[0], sb[1], sb[2], sb[3], sb[4], sb[5], sb[6], sb[7]); 
 
 	if (sb[0] != 0x72 || sb[7] < 14)
 		return bad_sense(sb, sizeof(sb));
+
 	desc = sb + 8;
+	if (verbose)
+		fprintf(stderr, "SG_IO: desc[] = {%02x %02x .. }\n", desc[0], desc[1]);
+
 	if (desc[0] != 9 || desc[1] < 12)
 		return bad_sense(sb, sizeof(sb));
 
@@ -214,6 +226,12 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	}
 	if (verbose)
 		fprintf(stderr, "      ATA_16 tf->status=0x%02x tf->error=0x%02x\n", tf->status, tf->error);
+#if 0
+	if (tf->status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
+		errno = EIO;
+		return -1;
+	}
+#endif
 	return 0;
 }
 
@@ -243,12 +261,12 @@ int do_drive_cmd (int fd, unsigned char *args)
 	}
 
 	rc = sg16(fd, SG_READ, &tf, data, data_bytes, 0);
-	if (rc == -1)
-		goto use_legacy_ioctl;
 	if (rc) {
+		if (rc == -1)
+			goto use_legacy_ioctl;
 		errno = rc;
 		rc = -1;
-	} else if (tf.status & 0x01) {	/* ERR_STAT */
+	} else if (tf.status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
 		if (verbose)
 			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
 				tf.command, tf.status, tf.error);
@@ -263,7 +281,7 @@ int do_drive_cmd (int fd, unsigned char *args)
 
 use_legacy_ioctl:
 	if (verbose)
-		fprintf(stderr, "trying legacy HDIO_DRIVE_CMD\n");
+		fprintf(stderr, "Trying legacy HDIO_DRIVE_CMD\n");
 	return ioctl(fd, HDIO_DRIVE_CMD, args);
 }
 
@@ -277,37 +295,40 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	 * Reformat and try to issue via SG_IO:
 	 */
 	tf_init(&tf, 0, 0, 0);
-	if (r->out_flags.lob.feat)	tf.lob.feat  = r->lob.feat;
-	if (r->out_flags.lob.lbal)	tf.lob.lbal  = r->lob.lbal;
-	if (r->out_flags.lob.nsect)	tf.lob.nsect = r->lob.nsect;
-	if (r->out_flags.lob.lbam)	tf.lob.lbam  = r->lob.lbam;
-	if (r->out_flags.lob.lbah)	tf.lob.lbah  = r->lob.lbah;
-	if (r->out_flags.hob.feat)	tf.hob.feat  = r->hob.feat;
-	if (r->out_flags.hob.lbal)	tf.hob.lbal  = r->hob.lbal;
-	if (r->out_flags.hob.nsect)	tf.hob.nsect = r->hob.nsect;
-	if (r->out_flags.hob.lbam)	tf.hob.lbam  = r->hob.lbam;
-	if (r->out_flags.hob.lbah)	tf.hob.lbah  = r->hob.lbah;
-	if (r->out_flags.lob.dev)	tf.dev       = r->lob.dev;
-	if (r->out_flags.lob.command)	tf.command   = r->lob.command;
+	if (r->oflags.b.feat)	tf.lob.feat  = r->lob.feat;
+	if (r->oflags.b.lbal)	tf.lob.lbal  = r->lob.lbal;
+	if (r->oflags.b.nsect)	tf.lob.nsect = r->lob.nsect;
+	if (r->oflags.b.lbam)	tf.lob.lbam  = r->lob.lbam;
+	if (r->oflags.b.lbah)	tf.lob.lbah  = r->lob.lbah;
+	if (r->oflags.b.dev)	tf.dev       = r->lob.dev;
+	if (r->oflags.b.command)	tf.command   = r->lob.command;
+	if ((r->oflags.all >> 8) || (r->iflags.all >> 8)) {
+		tf.is_lba48 = 1;
+		if (r->oflags.b.hob_feat)	tf.hob.feat  = r->hob.feat;
+		if (r->oflags.b.hob_lbal)	tf.hob.lbal  = r->hob.lbal;
+		if (r->oflags.b.hob_nsect)	tf.hob.nsect = r->hob.nsect;
+		if (r->oflags.b.hob_lbam)	tf.hob.lbam  = r->hob.lbam;
+		if (r->oflags.b.hob_lbah)	tf.hob.lbah  = r->hob.lbah;
+	}
 	switch (r->cmd_req) {
 		case TASKFILE_CMD_REQ_OUT:
-			data_bytes = r->out_bytes;
+			data_bytes = r->obytes;
 			data       = r->data;
 			rw         = SG_WRITE;
 			break;
 		case TASKFILE_CMD_REQ_IN:
-			data_bytes = r->in_bytes;
+			data_bytes = r->ibytes;
 			data       = r->data;
 			break;
 	}
 
 	rc = sg16(fd, rw, &tf, data, data_bytes, timeout_secs);
-	if (rc == -1)
-		goto use_legacy_ioctl;
 	if (rc) {
+		if (rc == -1)
+			goto use_legacy_ioctl;
 		errno = rc;
 		rc = -1;
-	} else if (tf.status & 0x01) {	/* ERR_STAT */
+	} else if (tf.status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
 		if (verbose)
 			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
 				tf.command, tf.status, tf.error);
@@ -315,28 +336,95 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 		rc = -1;
 	}
 
-	if (r->in_flags.lob.feat)	r->lob.feat  = tf.error;
-	if (r->in_flags.lob.lbal)	r->lob.lbal  = tf.lob.lbal;
-	if (r->in_flags.lob.nsect)	r->lob.nsect = tf.lob.nsect;
-	if (r->in_flags.lob.lbam)	r->lob.lbam  = tf.lob.lbam;
-	if (r->in_flags.lob.lbah)	r->lob.lbah  = tf.lob.lbah;
-	if (r->in_flags.hob.feat)	r->hob.feat  = tf.hob.feat;
-	if (r->in_flags.hob.lbal)	r->hob.lbal  = tf.hob.lbal;
-	if (r->in_flags.hob.nsect)	r->hob.nsect = tf.hob.nsect;
-	if (r->in_flags.hob.lbam)	r->hob.lbam  = tf.hob.lbam;
-	if (r->in_flags.hob.lbah)	r->hob.lbah  = tf.hob.lbah;
-	if (r->in_flags.lob.dev)	r->lob.dev   = tf.dev;
-	if (r->in_flags.lob.command)	r->lob.command = tf.status;
+	if (r->iflags.b.feat)		r->lob.feat  = tf.error;
+	if (r->iflags.b.lbal)		r->lob.lbal  = tf.lob.lbal;
+	if (r->iflags.b.nsect)		r->lob.nsect = tf.lob.nsect;
+	if (r->iflags.b.lbam)		r->lob.lbam  = tf.lob.lbam;
+	if (r->iflags.b.lbah)		r->lob.lbah  = tf.lob.lbah;
+	if (r->iflags.b.dev)		r->lob.dev   = tf.dev;
+	if (r->iflags.b.command)	r->lob.command = tf.status;
+	if (r->iflags.b.hob_feat)	r->hob.feat  = tf.hob.feat;
+	if (r->iflags.b.hob_lbal)	r->hob.lbal  = tf.hob.lbal;
+	if (r->iflags.b.hob_nsect)	r->hob.nsect = tf.hob.nsect;
+	if (r->iflags.b.hob_lbam)	r->hob.lbam  = tf.hob.lbam;
+	if (r->iflags.b.hob_lbah)	r->hob.lbah  = tf.hob.lbah;
 	return rc;
 
 use_legacy_ioctl:
 	if (verbose)
 		fprintf(stderr, "trying legacy HDIO_DRIVE_TASKFILE\n");
+	errno = 0;
 	rc = ioctl(fd, HDIO_DRIVE_TASKFILE, r);
+	if (verbose && ((r->iflags.all >> 8) || (r->iflags.all >> 8))) {
+		int err = errno;
+		fprintf(stderr, "rc=%d, errno=%d, returned ATA registers: ", rc, err);
+		if (r->iflags.b.feat)		fprintf(stderr, " er=%02x", r->lob.feat);
+		if (r->iflags.b.nsect)		fprintf(stderr, " ns=%02x", r->lob.nsect);
+		if (r->iflags.b.lbal)		fprintf(stderr, " ll=%02x", r->lob.lbal);
+		if (r->iflags.b.lbam)		fprintf(stderr, " lm=%02x", r->lob.lbam);
+		if (r->iflags.b.lbah)		fprintf(stderr, " lh=%02x", r->lob.lbah);
+		if (r->iflags.b.dev)		fprintf(stderr, " dh=%02x", r->lob.dev);
+		if (r->iflags.b.command)	fprintf(stderr, " st=%02x", r->lob.command);
+		if (r->iflags.b.hob_feat)	fprintf(stderr, " err=%02x", r->hob.feat);
+		if (r->iflags.b.hob_nsect)	fprintf(stderr, " err=%02x", r->hob.nsect);
+		if (r->iflags.b.hob_lbal)	fprintf(stderr, " err=%02x", r->hob.lbal);
+		if (r->iflags.b.hob_lbam)	fprintf(stderr, " err=%02x", r->hob.lbam);
+		if (r->iflags.b.hob_lbah)	fprintf(stderr, " err=%02x", r->hob.lbah);
+		fprintf(stderr, "\n");
+		errno = err;
+	}
 	if (rc == -1 && errno == EINVAL) {
-		fprintf(stderr, "The running kernel lacks CONFIG_IDE_TASK_IOCTL support\n");
+		fprintf(stderr, "The running kernel lacks CONFIG_IDE_TASK_IOCTL support for this device.\n");
 		errno = EINVAL;
 	}
 	return rc;
 }
+#include <linux/hdreg.h>
+void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force_lba48,
+				__u64 lba, unsigned int nsect, int data_bytes)
+{
+	const __u64 lba28_mask = 0x0fffffff;
 
+	memset(r, 0, sizeof(struct hdio_taskfile) + data_bytes);
+	if (!data_bytes) {
+		r->dphase  = TASKFILE_DPHASE_NONE;
+		r->cmd_req = TASKFILE_CMD_REQ_NODATA;
+	} else if (rw == RW_WRITE) {
+		r->dphase  = TASKFILE_DPHASE_PIO_OUT;
+		r->cmd_req = TASKFILE_CMD_REQ_RAW_OUT;
+		r->obytes  = data_bytes;
+	} else { /* rw == RW_READ */
+		r->dphase  = TASKFILE_DPHASE_PIO_IN;
+		r->cmd_req = TASKFILE_CMD_REQ_IN;
+		r->ibytes  = data_bytes;
+	}
+	r->lob.command      = ata_op;
+	r->oflags.b.command = 1;
+	r->oflags.b.dev     = 1;
+	r->oflags.b.lbal    = 1;
+	r->oflags.b.lbam    = 1;
+	r->oflags.b.lbah    = 1;
+	r->oflags.b.nsect   = 1;
+
+	r->iflags.b.command = 1;
+	r->iflags.b.feat    = 1;
+
+	r->lob.nsect = nsect;
+	r->lob.lbal  = lba;
+	r->lob.lbam  = lba >>  8;
+	r->lob.lbah  = lba >> 16;
+	r->lob.dev   = ATA_USING_LBA;
+
+	if ((lba & ~lba28_mask) == 0 && nsect <= 256 && !force_lba48) {
+		r->lob.dev |= (lba >> 24) & 0x0f;
+	} else {
+		r->hob.nsect = nsect >>  8;
+		r->hob.lbal  = lba   >> 24;
+		r->hob.lbam  = lba   >> 32;
+		r->hob.lbah  = lba   >> 40;
+		r->oflags.b.hob_nsect = 1;
+		r->oflags.b.hob_lbal  = 1;
+		r->oflags.b.hob_lbam  = 1;
+		r->oflags.b.hob_lbah  = 1;
+	}
+}
