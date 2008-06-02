@@ -1,3 +1,10 @@
+hdparm (8.7-1) unstable; urgency=low
+
+  * New upstream release
+  * Fixed incorrect LSB header Default-Stop (closes: #476110)
+
+ -- Stephen Gran <sgran@debian.org>  Tue, 03 Jun 2008 00:36:06 +0100
+
 hdparm (8.6-1) unstable; urgency=low
 
   * New upstream version
