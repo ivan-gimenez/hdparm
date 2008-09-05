@@ -1,3 +1,9 @@
+hdparm (8.9-2) unstable; urgency=low
+
+  * Remove stale stop links (closes: #497903)
+
+ -- Stephen Gran <sgran@debian.org>  Fri, 05 Sep 2008 11:23:20 +0100
+
 hdparm (8.9-1) unstable; urgency=low
 
   * New upstream version
