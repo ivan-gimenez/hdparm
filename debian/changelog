@@ -1,3 +1,11 @@
+hdparm (8.9-3) unstable; urgency=low
+
+  * Fix output formatting for drives configured from /etc/default/hdparm
+    (closes: #494660)
+  * Add documentation about changing device names (closes: #421087)
+
+ -- Stephen Gran <sgran@debian.org>  Wed, 17 Dec 2008 22:45:28 +0000
+
 hdparm (8.9-2) unstable; urgency=low
 
   * Remove stale stop links (closes: #497903)
