@@ -1,3 +1,9 @@
+hdparm (9.12-1) unstable; urgency=low
+
+  * New upstream version (closes: #505284)
+
+ -- Stephen Gran <sgran@debian.org>  Sat, 07 Mar 2009 17:48:59 +0000
+
 hdparm (8.9-3) unstable; urgency=low
 
   * Fix output formatting for drives configured from /etc/default/hdparm

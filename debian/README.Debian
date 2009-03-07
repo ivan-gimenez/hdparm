@@ -62,13 +62,6 @@ Some problems with udev and module loading:
   /etc/hdparm.conf, that will fail the first time (as the device nodes
   don't yet exist) but will be properly set up when udev gets to them.
   
-  If you have devices that consistently come up in different orders (e.g., 
-  today's /dev/sda is tomorrow's /dev/sdb), then you can do one of two
-  things.  Either you can directly use one of the various /dev/disk/by-*
-  symlinks, or you can create a udev rule to create a symlink to your
-  drive with a more friendly name.  Then point hdparm at these symlinks
-  as you previously did with /dev/sda.
-
 Known problems, limitations, and work-arounds:
   
   Additional information from David B Harris:

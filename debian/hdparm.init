@@ -389,9 +389,9 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
     ret=0
     for drive in $harddisks; do
       WAS_RUN=1
-      log_progress_msg "$drive "
       /sbin/hdparm -q -f $drive 2>/dev/null|| ret=$?
       /sbin/hdparm -q $hdparm_opts -q $drive 2>/dev/null|| ret=$?
+      log_progress_msg "$drive "
     done
     log_end_msg $ret || true
   fi

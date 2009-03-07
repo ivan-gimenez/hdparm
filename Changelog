@@ -1,3 +1,48 @@
+hdparm-9.12
+	- added logical/physical sector size reporting
+	- updated -I output with SATA-2.6 additions
+	- support APM level retrieval with -B flag
+	- updated -C output to match ATA8
+	- added "form factor" and "rotation" display to -I, courtesy of Martin K.Petersen.
+hdparm-9.11
+	- switch back to ATA_16 by default: required by libata for ATAPI devices
+	- add --prefer-ata12 to force use of ATA_12 when needed (some USB enclosures)
+hdparm-9.10
+	- try and improve CF card detection
+	- fix display of mwdma modes 3,4 for CF cards
+hdparm-9.9
+	- recalculate cyls when kernel returns a truncated value
+hdparm-9.8
+	- fix -N  to correctly use top 4 LBA bits on non-LBA48 drives
+hdparm-9.7
+	- FIX RATHER NASTY LBA48/LBA28 CONFUSION BUGS
+	- use ATA_12 by default (helps USB), ATA_16 only when needed for LBA48
+hdparm-9.6
+	- fix -N for 1.5TB drives (from Justin Maggard)
+hdparm-9.5
+	- byteswap ID strings for fwdownload workarounds
+	- Makefile fixes for $(STRIP) from Wolfram Sang
+hdparm-9.4
+	- nuked --fwdownload80 in favour of model-specific workarounds
+	- use mlock() instead of MAP_POPULATE in fwdownload.c
+	- issue SET_STREAMING command as part of -E (for newer CD/DVD drives)
+		courtesy of Thomas Orgis <thomas@orgis.org>
+		and Thomas Fritzsche" <tf@noto.de>.
+hdparm-9.3
+	- new --idle-immediate and --idle-unload commands
+hdparm-9.2
+	- fix WWN output from -I
+hdparm-9.1
+	- tidy up output from --dco-identify, add more info to manpage
+	- add kernel (device driver) bug detection/warning to -N output
+hdparm-9.0
+	- update debian directory contents
+	- add --dco-freeze, --dco-identify, --dco-restore flags
+	- fix sgio.c to be more clever around the lba28 boundary
+	- add supposedly obsolete "cache/buffer size" reporting to -I
+	- new --fwdownload flag
+	- fix error reporting from sg16().
+	- dump entire returned sense desc[] in sgio.c with --verbose
 hdparm-8.9
 	- support /sys/block symlinks (some kernels seem to have those).
 hdparm-8.8

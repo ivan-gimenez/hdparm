@@ -5,13 +5,14 @@
 ## DP: Don't strip the binary during build, let dh_strip do it
 
 @DPATCH@
---- a/Makefile	(revision 428)
-+++ b/Makefile	(working copy)
-@@ -26,7 +26,6 @@
+diff -urNad hdparm-9.12~/Makefile hdparm-9.12/Makefile
+--- hdparm-9.12~/Makefile	2009-03-07 17:38:17.000000000 +0000
++++ hdparm-9.12/Makefile	2009-03-07 17:38:49.000000000 +0000
+@@ -28,7 +28,6 @@
  
  hdparm: hdparm.h sgio.h $(OBJS)
  	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
--	strip hdparm
+-	$(STRIP) hdparm
  
- sgio.o:	sgio.h
+ hdparm.o:	hdparm.h sgio.h
  
