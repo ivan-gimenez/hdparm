@@ -1,3 +1,9 @@
+hdparm (9.12-2) unstable; urgency=low
+
+  * Use correct header for O_DIRECT (closes: #519747)
+
+ -- Stephen Gran <sgran@debian.org>  Sun, 15 Mar 2009 10:59:20 +0000
+
 hdparm (9.12-1) unstable; urgency=low
 
   * New upstream version (closes: #505284)
