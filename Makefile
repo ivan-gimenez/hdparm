@@ -28,7 +28,6 @@ all: hdparm
 
 hdparm: hdparm.h sgio.h $(OBJS)
 	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
-	$(STRIP) hdparm
 
 hdparm.o:	hdparm.h sgio.h
 

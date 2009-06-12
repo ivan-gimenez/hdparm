@@ -22,7 +22,6 @@ DEB_DH_INSTALLINIT_ARGS := '--no-start'
 DEB_UPDATE_RCD_PARAMS := 'start 07 S . '
 DEB_FIXPERMS_EXCLUDE:= 20hdparm
 
-include /usr/share/cdbs/1/rules/dpatch.mk
 include /usr/share/cdbs/1/rules/debhelper.mk
 include /usr/share/cdbs/1/class/makefile.mk
 

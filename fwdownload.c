@@ -43,8 +43,8 @@ static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset,
 	if (final_80h)
 		r->lob.feat |= 0x80;
 
-	r->oflags.b.feat  = 1;
-	r->iflags.b.nsect = 1;
+	r->oflags.lob.feat  = 1;
+	r->iflags.lob.nsect = 1;
 
 	memcpy(r->data, data, bytecount);
 
@@ -162,8 +162,8 @@ int fwdownload (int fd, __u16 *id, const char *fwpath)
 			if (offset >= st.st_size) { // transfer complete?
 				err = 0;
 			} else {
-				fprintf(stderr, "Error: drive completed transfer at %d/%u bytes\n",
-							offset, (unsigned int)st.st_size);
+				fprintf(stderr, "Error: drive completed transfer at %llu/%llu bytes\n",
+						(unsigned long long)offset, (unsigned long long)st.st_size);
 				err = EIO;
 			}
 		} else if (err == -1 && !eof_okay) {
