@@ -1,3 +1,9 @@
+hdparm (9.27-1) unstable; urgency=low
+
+  * New upstream version
+
+ -- Stephen Gran <sgran@debian.org>  Sun, 17 Jan 2010 18:02:44 +0000
+
 hdparm (9.15-1) unstable; urgency=low
 
   * New upstream version (closes: #505284)
