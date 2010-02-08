@@ -1,3 +1,9 @@
+hdparm (9.27-2) unstable; urgency=low
+
+  * Stop unconditionally stripping hdparm during build (closes: #568774)
+
+ -- Stephen Gran <sgran@debian.org>  Mon, 08 Feb 2010 18:47:29 +0000
+
 hdparm (9.27-1) unstable; urgency=low
 
   * New upstream version
