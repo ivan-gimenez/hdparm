@@ -83,6 +83,7 @@ slow_down_raid_sync()
     echo 0 >/proc/sys/dev/raid/speed_limit_max
   fi
   sleep 2
+  trap undo_slow_down_raid_sync EXIT
 }
 
 undo_slow_down_raid_sync()
@@ -306,7 +307,6 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
              ;; 
             *)
               log_failure_msg "Unknown option $KEY"
-              undo_slow_down_raid_sync
               exit 1
               ;;
           esac
@@ -316,7 +316,6 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
             '}')
               if [ -z "$DISC" ] && [ "$WAS_RUN" != '1' ]; then
                 log_failure_msg "No disk enabled. Exiting"
-                undo_slow_down_raid_sync
                 exit 1
               fi
               if [ -n "$OPTIONS" ] && [ -b "$DISC" ]; then
@@ -367,14 +366,12 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
               ;;
             *)
               log_failure_msg "unknown option $KEY"
-              undo_slow_down_raid_sync
               exit 1
               ;;
           esac
           ;;
        *)
          log_failure_msg "unknown separator $SEP"
-         undo_slow_down_raid_sync
          exit 1
          ;;
       esac
@@ -401,10 +398,5 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
     log_end_msg 0
   fi
 }
-
-# Turn back on RAID synchronisation if we turned it off.
-if [ "$raidstat" != 'OK' ] && [ "$RAID_WORKAROUND" = "yes" ]; then
-  undo_slow_down_raid_sync
-fi
 
 exit 0
