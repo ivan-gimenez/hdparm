@@ -3,7 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Stephen Gran <sgran@debian.org>
 Build-Depends: cdbs (>> 0.4.37), debhelper (>= 5.0), dpkg-dev (>= 1.13.19)
-Standards-Version: 3.8.1
+Standards-Version: 3.9.1
 
 Package: hdparm
 Architecture: any

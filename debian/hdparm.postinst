@@ -2,7 +2,9 @@
 set -e
 
 if [ -z "$2" ] || dpkg --compare-versions "$2" lt 6.1-6 ; then
-  ln -s ../hdparm.rules /etc/udev/rules.d/z60_hdparm.rules
+  if [ ! -L /etc/udev/rules.d/z60_hdparm.rules ]; then
+    ln -s ../hdparm.rules /etc/udev/rules.d/z60_hdparm.rules
+  fi
 fi
 
 if [ -n "$2" ] && dpkg --compare-versions "$2" lt 8.9-2; then

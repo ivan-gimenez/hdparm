@@ -6,9 +6,4 @@ contrib/README          usr/share/doc/hdparm/contrib
 contrib/ultrabayd       usr/share/doc/hdparm/contrib
 debian/hdparm.conf	etc/
 debian/hdparm.rules     etc/udev/
-contrib/fix_standby.c	usr/share/doc/hdparm/contrib
-contrib/idectl		usr/share/doc/hdparm/contrib
-contrib/README		usr/share/doc/hdparm/contrib
-contrib/ultrabayd	usr/share/doc/hdparm/contrib
-debian/hdparm.conf	etc/
-debian/hdparm.rules	etc/udev/
+wiper/wiper.sh          usr/share/doc/hdparm/contrib

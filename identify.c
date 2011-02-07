@@ -433,7 +433,7 @@ static const char *cap_sata0_str[16] = {
 	"unknown 76[6]",				/* word 76 bit  6 */
 	"unknown 76[5]",				/* word 76 bit  5 */
 	"unknown 76[4]",				/* word 76 bit  4 */
-	"unknown 76[3]",				/* word 76 bit  3 */
+	"Gen3 signaling speed (6.0Gb/s)",		/* word 76 bit  3 */
 	"Gen2 signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
 	"Gen1 signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
 	"unknown 76[0]"					/* word 76 bit  0 */
@@ -938,7 +938,7 @@ void identify (__u16 *id_supplied)
 			printf("\t%-31s %11u bytes\n","Physical Sector size:", sector_bytes * pfactor);
 			if ((val[209] & 0xc000) == 0x4000) {
 				unsigned int offset = val[209] & 0x1fff;
-				printf("\t%-31s %11u bytes\n", "Logical Sector-0 offset:", offset * lsize);
+				printf("\t%-31s %11u bytes\n", "Logical Sector-0 offset:", offset * sector_bytes);
 			}
 		}
 		if (!bbbig) bbbig = (__u64)(ll>mm ? ll : mm); /* # 512 byte blocks */
@@ -1101,7 +1101,8 @@ void identify (__u16 *id_supplied)
 		sdma_ok = 0;  /* word 62 has been re-purposed for non-sdma mode reporting */
 		printf("\tDMADIR bit required in PACKET commands\n");
 	} else {
-		__u8 w62 = val[62], hi = w62 >> 8, lo = w62;
+		__u16 w62 = val[62];
+		__u8 hi = w62 >> 8, lo = w62;
 		if (!w62 || (lo & 0xf8))
 			sdma_ok = 0;
 		else if (hi && hi != 1 && hi != 2 && hi != 4)
@@ -1210,7 +1211,11 @@ void identify (__u16 *id_supplied)
 		__u16 word69 = val[69] & ~(trimz | trimd); /* TRIM bits require special interpretation */
 		print_features(word69, word69, feat_word69_str);
 		if (val[169] & 1 && val[169] != 0xffff) { /* supports TRIM ? */
-			printf("\t   *\tData Set Management TRIM supported\n");
+			printf("\t   *\tData Set Management TRIM supported");
+			if (val[105] && val[105] != 0xffff)
+				printf(" (limit %u block%s)\n", val[105], val[105] > 1 ? "s" : "");
+			else
+				printf(" (limit unknown)\n");
 			if (val[69] & trimd) { /* Deterministic TRIM support */
 				if (val[69] & trimz)
 					print_features(trimz, trimz, feat_word69_str);
@@ -1321,16 +1326,17 @@ void identify (__u16 *id_supplied)
 				else				  printf("high\n");
 			}
 		}
-		jj =  val[ERASE_TIME]     & ERASE_BITS;
-		kk =  val[ENH_ERASE_TIME] & ERASE_BITS;
-		if(jj || kk) {
+		jj =  val[ERASE_TIME];
+		kk =  val[ENH_ERASE_TIME];
+		if((jj && jj <= 0x00ff) || (kk && kk <= 0x00ff)) {
 			printf("\t");
-			if(jj) printf("%umin for SECURITY ERASE UNIT. ", jj==ERASE_BITS ? 508 : jj<<1);
-			if(kk) printf("%umin for ENHANCED SECURITY ERASE UNIT.", kk==ERASE_BITS ? 508 : kk<<1);
+			if(jj) printf("%umin for SECURITY ERASE UNIT. ",         (jj == 0xff) ? 508 : (jj * 2));
+			if(kk) printf("%umin for ENHANCED SECURITY ERASE UNIT.", (kk == 0xff) ? 508 : (kk * 2));
 			printf("\n");
 		}
 	}
-	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) {
+	//printf("w84=0x%04x w87=0x%04x like_std=%d\n", val[84], val[87], like_std);
+	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_SUPP_2] & WWN_SUP)) {
 		printf("Logical Unit WWN Device Identifier: %04x%04x%04x%04x\n", val[108], val[109], val[110], val[111]);
 		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
 		printf("\tIEEE OUI\t: %06x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));

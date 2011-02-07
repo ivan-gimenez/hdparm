@@ -1,5 +1,35 @@
+hdparm-9.32
+	- fix b0rked (since 9.27?) SET_FEATURES commands; eg. -B, -M, etc..
+hdparm-9.31
+	- fix oflags bug in do_taskfile_cmd().
+	- change --user-master to default to "user" instead of "master", for better drive compatibility.
+	- use drive-supplied timeout (plus a little) for security-erase commands
+	- use 15 secs as default general timeout (instead of 5)
+	- ensure timeouts get passed through to sg16 correctly
+	- increment revision-code when setting master-password, rather than always using 0xff11
+	- update HPA description in manpage
+hdparm-9.30
+	- report word[105] in -I :  max 512-byte blocks of range-data per DSM/Trim command
+	- fix wiper.sh/hdparm to use only as many LBA ranges per TRIM as the drive can handle
+	- manpage / help-text cleanups from Benno Schulenberg <bensberg@justemail.net>
+hdparm-9.29
+	- add --offset for use with -t, to get timings from middle/end of drive,
+	     courtesy of Sergei Kirjanov <rewlad@gmail.com>
+	- restrict --trim-sector-ranges-stdin to small TRIM commands on most drives
+	- fix w62 bug in -I
+	- dump all data bytes with --verbose
+	- warn about bad/missing sense data, but continue regardless
+	- show in/out data[] separately with --verbose
+	- Add reporting to -I for sata3 signaling speed.
+	- force use of ATA_16 for all commands to ATAPI devices.
+	- supply a sector count of "1" for IDENTIFY commands, to satisfy buggy USB3 bridges.
+hdparm-9.28
+	- check for EBADE for IDE/ATAPI compatibility with recent kernels
+	- always issue both methods when setting DVD speed with -E
+	- use /usr/sbin/rdev to find rootdev in wiper.sh
+	- fix reporting of Sector-0 offset, from Martin Petersen
+	- first crack at decoding the "WD Idle3" vendor-unique command (disabled by default)
 hdparm-9.27
-	- repackaged again with wiper-2.5
 	- wiper.sh updated to wiper-2.3
 	- fix definition of reg_flags in sgio.h to work with old IDE drivers again
 hdparm-9.26

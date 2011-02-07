@@ -172,7 +172,11 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
               fi
               ;;
             *)
-              DISC=$KEY
+              if [ -h "$KEY" ]; then
+                DISC=$(readlink -m "$KEY")
+              else
+                DISC=$KEY
+              fi
               OPTIONS=$DEFAULT
               OPT_QUIET=$DEF_QUIET
               WAS_RUN=0

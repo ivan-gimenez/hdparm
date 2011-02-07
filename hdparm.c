@@ -1,5 +1,6 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
 /*          - by Mark Lord (C) 1994-2008 -- freely distributable */
+#define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
 #include <stdlib.h>
@@ -34,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.27"
+#define VERSION "v9.32"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -63,6 +64,9 @@ static int do_defaults = 0, do_flush = 0, do_ctimings, do_timings = 0;
 static int do_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
 static int do_flush_wcache = 0;
 
+//static int set_wdidle3  = 0;
+static int   set_timings_offset = 0;
+static __u64 timings_offset = 0;
 static int set_fsreadahead= 0, get_fsreadahead= 0, fsreadahead= 0;
 static int set_readonly = 0, get_readonly = 0, readonly = 0;
 static int set_unmask   = 0, get_unmask   = 0, unmask   = 0;
@@ -90,7 +94,7 @@ static int set_sleepnow   = 0, get_sleepnow   = 0;
 static int set_powerup_in_standby = 0, get_powerup_in_standby = 0, powerup_in_standby = 0;
 static int get_hitachi_temp = 0, set_hitachi_temp = 0;
 static int security_freeze   = 0;
-static int security_master = 1, security_mode = 0;
+static int security_master = 0, security_mode = 0;
 static int enhanced_erase = 0;
 static int set_security   = 0;
 static int do_dco_freeze = 0, do_dco_restore = 0, do_dco_identify = 0;
@@ -135,8 +139,9 @@ static int	get_doreset = 0, set_doreset = 0;
 static int	i_know_what_i_am_doing = 0;
 static int	please_destroy_my_drive = 0;
 
-const int timeout_12secs = 12;
-const int timeout_5mins = (5 * 60);
+const int timeout_15secs = 15;
+const int timeout_60secs = 60;
+const int timeout_5mins  = (5 * 60);
 const int timeout_2hrs   = (2 * 60 * 60);
 
 static int open_flags = O_RDONLY|O_NONBLOCK;
@@ -182,7 +187,7 @@ static void flush_buffer_cache (int fd)
 	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
 		perror("BLKFLSBUF failed");
 	else
-		do_drive_cmd(fd, NULL);	/* IDE: await completion */
+		do_drive_cmd(fd, NULL, 0);	/* IDE: await completion */
 	sync();
 }
 
@@ -333,8 +338,17 @@ static int time_device (int fd)
 	if (err)
 		goto quit;
 
-	printf(" Timing %s disk reads:  ", (open_flags & O_DIRECT) ? "O_DIRECT" : "buffered");
+	printf(" Timing %s disk reads", (open_flags & O_DIRECT) ? "O_DIRECT" : "buffered");
+	if (set_timings_offset)
+		printf(" (offset %llu GB)", timings_offset / 0x40000000ULL);
+	printf(": ");
 	fflush(stdout);
+
+	if (set_timings_offset && lseek64(fd, timings_offset, SEEK_SET) == (off64_t)-1) {
+		err = errno;
+		perror("lseek() failed");
+		goto quit;
+	}
 
 	/*
 	 * getitimer() is used rather than gettimeofday() because
@@ -376,12 +390,15 @@ static void dmpstr (const char *prefix, unsigned int i, const char *s[], unsigne
 		printf("%s%s", prefix, s[i]);
 }
 
+static __u16 *id;
+static void get_identify_data (int fd);
+
 static __u64 get_lba_capacity (__u16 *idw)
 {
-	__u64 nsects = (idw[58] << 16) | idw[57];
+	__u64 nsects = ((__u32)idw[58] << 16) | idw[57];
 
 	if (idw[49] & 0x200) {
-		nsects = (idw[61] << 16) | idw[60];
+		nsects = ((__u32)idw[61] << 16) | idw[60];
 		if ((idw[83] & 0xc000) == 0x4000 && (idw[86] & 0x0400)) {
 			nsects = (__u64)idw[103] << 48 | (__u64)idw[102] << 32 |
 			         (__u64)idw[101] << 16 | idw[100];
@@ -689,6 +706,27 @@ static void interpret_xfermode (unsigned int xfermode)
 	printf(")\n");
 }
 
+static unsigned int get_erase_timeout_secs (int fd, int enhanced)
+{
+	unsigned int timeout = 0;
+	unsigned int idx = 89 + enhanced;
+
+	get_identify_data(fd);
+	if (id) {
+		timeout = id[idx];
+		if (timeout && timeout <= 0xff) {
+			if (timeout == 0xff)
+				timeout = 508 + 60;  /* spec says > 508 minutes */
+			else
+				timeout = (timeout * 2) + 5;  /* Add on a 5min margin */
+		}
+	}
+	if (!timeout)
+		timeout = 2 * 60;  /* default: two hours */
+	timeout *= 60; /* secs */
+	return timeout;
+}
+
 static void
 do_set_security (int fd)
 {
@@ -713,8 +751,6 @@ do_set_security (int fd)
 	data[0]		= security_master & 0x01;
 	memcpy(data+2, security_password, 32);
 
-	/* Not setting any oflags causes a segfault and most
-	   of the times a kernel panic */
 	r->oflags.lob.command = 1;
 	r->oflags.lob.feat    = 1;
 
@@ -733,9 +769,17 @@ do_set_security (int fd)
 			description = "SECURITY_SET_PASS";
 			data[1] = (security_mode & 0x01);
 			if (security_master) {
-				/* master password revision code */
-				data[34] = 0x11;
-				data[35] = 0xff;
+				/* increment master-password revision-code */
+				__u16 revcode;
+				get_identify_data(fd);
+				if (!id)
+					exit(EIO);
+				revcode = id[92];
+				if (revcode == 0xffff)
+					revcode = 0;
+				revcode += 1;
+				data[34] = revcode;
+				data[35] = revcode >> 8;
 			}
 			break;
 		default:
@@ -762,12 +806,13 @@ do_set_security (int fd)
 	 * assuming the segfault isn't followed by an oops.
 	 */
 	if (security_command == ATA_OP_SECURITY_ERASE_UNIT) {
+		unsigned int timeout = get_erase_timeout_secs(fd, enhanced_erase);
 		__u8 args[4] = {ATA_OP_SECURITY_ERASE_PREPARE,0,0,0};
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {   
 			err = errno;
 			perror("ERASE_PREPARE");
 		} else {
-			if ((do_taskfile_cmd(fd, r, timeout_2hrs))) {
+			if ((do_taskfile_cmd(fd, r, timeout))) {
 				err = errno;
 				perror("SECURITY_ERASE");
 			}
@@ -775,24 +820,24 @@ do_set_security (int fd)
 	} else if (security_command == ATA_OP_SECURITY_DISABLE) {
 		/* First attempt an unlock  */
 		r->lob.command = ATA_OP_SECURITY_UNLOCK;
-		if ((do_taskfile_cmd(fd, r, timeout_12secs))) {
+		if ((do_taskfile_cmd(fd, r, timeout_15secs))) {
 			err = errno;
 			perror("SECURITY_UNLOCK");
 		} else {
 			/* Then the security disable */
 			r->lob.command = security_command;
-			if ((do_taskfile_cmd(fd, r, timeout_12secs))) {
+			if ((do_taskfile_cmd(fd, r, timeout_15secs))) {
 				err = errno;
 				perror("SECURITY_DISABLE");
 			}
 		}
 	} else if (security_command == ATA_OP_SECURITY_UNLOCK) {
-		if ((do_taskfile_cmd(fd, r, timeout_12secs))) {
+		if ((do_taskfile_cmd(fd, r, timeout_15secs))) {
 			err = errno;
 			perror("SECURITY_UNLOCK");
 		}
 	} else if (security_command == ATA_OP_SECURITY_SET_PASS) {
-		if ((do_taskfile_cmd(fd, r, timeout_12secs))) {
+		if ((do_taskfile_cmd(fd, r, timeout_15secs))) {
 			err = errno;
 			perror("SECURITY_SET_PASS");
 		}
@@ -807,33 +852,33 @@ do_set_security (int fd)
 
 static __u8 last_identify_op = 0;
 
-static void *get_identify_data (int fd, void *prev)
+static void get_identify_data (int fd)
 {
 	static __u8 args[4+512];
-	__u16 *id = (void *)(args + 4);
 	int i;
 
-	if (prev != (void *)-1)
-		return prev;
+	if (id)
+		return;
 	memset(args, 0, sizeof(args));
 	last_identify_op = ATA_OP_IDENTIFY;
 	args[0] = last_identify_op;
-	args[3] = 1;
-	if (do_drive_cmd(fd, args)) {
+	args[3] = 1;	/* sector count */
+	if (do_drive_cmd(fd, args, 0)) {
+		prefer_ata12 = 0;
 		last_identify_op = ATA_OP_PIDENTIFY;
 		args[0] = last_identify_op;
 		args[1] = 0;
 		args[2] = 0;
-		args[3] = 1;
-		if (do_drive_cmd(fd, args)) {
+		args[3] = 1;	/* sector count */
+		if (do_drive_cmd(fd, args, 0)) {
 			perror(" HDIO_DRIVE_CMD(identify) failed");
-			return NULL;
+			return;
 		}
 	}
 	/* byte-swap the little-endian IDENTIFY data to match byte-order on host CPU */
+	id = (void *)(args + 4);
 	for (i = 0; i < 0x100; ++i)
 		__le16_to_cpus(&id[i]);
-	return id;
 }
 
 static void confirm_i_know_what_i_am_doing (const char *opt, const char *explanation)
@@ -856,16 +901,15 @@ static void confirm_please_destroy_my_drive (const char *opt, const char *explan
 	}
 }
 
-static int flush_wcache (int fd, __u16 **id_p)
+static int flush_wcache (int fd)
 {
 	__u8 args[4] = {ATA_OP_FLUSHCACHE,0,0,0};
-	__u16 *id;
 	int err = 0;
 
-	*id_p = id = get_identify_data(fd, *id_p);
+	get_identify_data(fd);
 	if (id && (id[83] & 0xe000) == 0x6000)
 		args[0] = ATA_OP_FLUSHCACHE_EXT;
-	if (do_drive_cmd(fd, args)) {
+	if (do_drive_cmd(fd, args, timeout_60secs)) {
 		err = errno;
 		perror (" HDIO_DRIVE_CMD(flushcache) failed");
 	}
@@ -913,6 +957,44 @@ static int abort_if_not_full_device (int fd, __u64 lba, const char *devname, con
 	exit(EINVAL);
 }
 
+#if 0
+static int do_wdidle3 (int fd, const char *devname)
+{
+	struct ata_tf tf;
+	int err = 0;
+	const unsigned char vu_op = 0x8a;
+
+	abort_if_not_full_device(fd, 0, devname, NULL);
+	confirm_please_destroy_my_drive("--wdidle3", "This is not fully implemented yet, and could destroy the drive and/or all data on it.");
+	printf("attempting to tweak Western Digital \"idle-3\" parameters\n");
+	fflush(stdout);
+
+  {
+    unsigned char bits;
+    for (bits = 0; bits <= 0x1f; ++bits) {
+	tf_init(&tf, vu_op, 0, 0);
+	tf.lob.feat  = 'W';
+	tf.lob.nsect = 'D';
+	tf.lob.lbal  = 'C';
+	tf.lob.lbam  = 0x00;
+	tf.lob.lbah  = 0x00;
+	tf.dev       = 0xa0 | (tf.dev & 0xb0) | (bits & 0xf);
+	if (bits >= 0x10)
+		tf.dev |= 0x40;
+
+	/* This probably wants to transfer data, but.. ???? */
+	if (sg16(fd, SG_WRITE, SG_PIO, &tf, NULL, 0, 5 /* seconds */)) {
+		err = errno;
+		perror("FAILED");
+	} else {
+		printf("succeeded\n");
+	}
+    }
+  }
+	return err;
+}
+#endif
+
 static __u16 *get_dco_identify_data (int fd, int quietly)
 {
 	static __u8 args[4+512];
@@ -923,7 +1005,7 @@ static __u16 *get_dco_identify_data (int fd, int quietly)
 	args[0] = ATA_OP_DCO;
 	args[2] = 0xc2;
 	args[3] = 1;
-	if (do_drive_cmd(fd, args)) {
+	if (do_drive_cmd(fd, args, 0)) {
 		if (!quietly)
 			perror(" HDIO_DRIVE_CMD(dco_identify) failed");
 		return NULL;
@@ -936,7 +1018,7 @@ static __u16 *get_dco_identify_data (int fd, int quietly)
 	}
 }
 
-static __u64 do_get_native_max_sectors (int fd, __u16 *id)
+static __u64 do_get_native_max_sectors (int fd)
 {
 	int err = 0;
 	__u64 max = 0;
@@ -953,6 +1035,9 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	r.iflags.lob.lbah     = 1;
 	r.lob.dev = 0x40;
 
+	get_identify_data(fd);
+	if (!id)
+		exit(EIO);
 	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
 		r.iflags.hob.lbal  = 1;
 		r.iflags.hob.lbam  = 1;
@@ -971,7 +1056,7 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	} else {
 		r.iflags.lob.dev = 1;
 		r.lob.command = ATA_OP_READ_NATIVE_MAX;
-		if (do_taskfile_cmd(fd, &r, timeout_12secs)) {
+		if (do_taskfile_cmd(fd, &r, 0)) {
 			err = errno;
 			perror (" READ_NATIVE_MAX_ADDRESS failed");
 		} else {
@@ -982,9 +1067,9 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	return max;
 }
 
-static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname)
+static int do_make_bad_sector (int fd, __u64 lba, const char *devname)
 {
-	int err = 0, has_write_unc;
+	int err = 0, has_write_unc = 0;
 	struct hdio_taskfile *r;
 	const char *flagged;
 
@@ -996,8 +1081,10 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname
 		return err;
 	}
 
-	has_write_unc = (id[ 83] & 0xc000) == 0x4000 && (id[ 86] & 0x8000) == 0x8000
-		     && (id[119] & 0xc004) == 0x4004 && (id[120] & 0xc000) == 0x4000;
+	get_identify_data(fd);
+	if (id)
+		has_write_unc = (id[ 83] & 0xc000) == 0x4000 && (id[ 86] & 0x8000) == 0x8000
+			     && (id[119] & 0xc004) == 0x4004 && (id[120] & 0xc000) == 0x4000;
 
 	if (has_write_unc || make_bad_sector_flagged || lba >= lba28_limit) {
 		if (!has_write_unc) {
@@ -1019,7 +1106,7 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname
 	/* Try and ensure that the system doesn't have our sector in cache */
 	flush_buffer_cache(fd);
 
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, r, timeout_60secs)) {
 		err = errno;
 		perror("FAILED");
 	} else {
@@ -1048,7 +1135,7 @@ static int do_format_track (int fd, __u64 lba, const char *devname)
 	printf("re-formatting lba %llu: ", lba);
 	fflush(stdout);
 
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, r, timeout_60secs)) {
 		err = errno;
 		perror("FAILED");
 	} else {
@@ -1079,7 +1166,7 @@ static int do_erase_sectors (int fd, __u64 lba, const char *devname)
 	printf("erasing sectors %llu-%llu: ", lba, lba + 255);
 	fflush(stdout);
 
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, r, timeout_60secs)) {
 		err = errno;
 		perror("FAILED");
 	} else {
@@ -1154,22 +1241,62 @@ static void do_trim_sector_ranges (int fd, const char *devname, int nranges, str
 	exit(err);
 }
 
+static void
+extract_id_string (__u16 *idw, int words, char *dst)
+{
+	char *e;
+	int i, max = words * 2;
+
+	for (i = 0; i < words; ++i) {
+		__u16 w = idw[i];
+		w = (__u16)(__be16)(w);
+		dst[i*2  ] = w >> 8;
+		dst[i*2+1] = w;
+	}
+	dst[max] = '\0';
+	for (e = dst + max; --e != dst;) {
+		if (*e && *e != ' ')
+			break;
+		*e = '\0';
+	}
+}
+
 static int
-do_trim_from_stdin (int fd, const char *devname, void *id)
+get_trim_dev_limit (void)
+{
+	char model[41];
+
+	if (id[105] && id[105] != 0xffff)
+		return id[105];
+	extract_id_string(id + 27, 20, model);
+	if (0 == strcmp(model, "OCZ VERTEX-LE"))
+		return 8;
+	if (0 == strcmp(model, "OCZ-VERTEX"))
+		return 64;
+	return 1;  /* all other drives, including Intel SSDs */
+}
+
+static int
+do_trim_from_stdin (int fd, const char *devname)
 {
 	__u64 *data, range, nsectors = 0, lba_limit;
 	unsigned int max_kb, data_sects, data_bytes;
-	unsigned int total_ranges = 0, nranges = 0, max_ranges;
+	unsigned int total_ranges = 0, nranges = 0, max_ranges, dev_limit;
 	int err = 0;
 
-	id = get_identify_data(fd, id);
-	lba_limit = id ? get_lba_capacity(id) : (1ULL << 48) - 1;
+	get_identify_data(fd);
+	if (!id)
+		exit(EIO);
+	lba_limit = get_lba_capacity(id);
+	dev_limit = get_trim_dev_limit();
 
 	err = sysfs_get_attr(fd, "queue/max_sectors_kb", "%u", &max_kb, NULL, 0);
 	if (err || max_kb == 0)
-		data_sects = 128;	/* "safe" default for most hardware */
+		data_sects = 128;	/* "safe" default for most controllers */
 	else
 		data_sects = max_kb * 2;
+	if (data_sects > dev_limit)
+		data_sects = dev_limit;
 	data_bytes = data_sects * 512;
 
 	data = mmap(NULL, data_bytes, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
@@ -1178,6 +1305,7 @@ do_trim_from_stdin (int fd, const char *devname, void *id)
 		perror("mmap(MAP_ANONYMOUS)");
 		exit(err);
 	}
+	memset(data, 0, data_bytes);
 	max_ranges = data_bytes / sizeof(range);
 
 	do {
@@ -1201,6 +1329,7 @@ do_trim_from_stdin (int fd, const char *devname, void *id)
 			data[nranges++] = __cpu_to_le64(range);
 			if (nranges == max_ranges) {
 				err = trim_sectors(fd, devname, nranges, data, nsectors);
+				memset(data, 0, data_bytes);
 				nranges = 0;
 				nsectors = 0;
 			}
@@ -1235,7 +1364,7 @@ static int do_write_sector (int fd, __u64 lba, const char *devname)
 	// Try and ensure that the system doesn't have our sector in cache:
 	flush_buffer_cache(fd);
 
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, r, timeout_60secs)) {
 		err = errno;
 		perror("FAILED");
 	} else {
@@ -1265,7 +1394,7 @@ static int do_read_sector (int fd, __u64 lba, const char *devname)
 	printf("reading sector %llu: ", lba);
 	fflush(stdout);
 
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, r, timeout_60secs)) {
 		err = errno;
 		perror("FAILED");
 	} else {
@@ -1286,19 +1415,22 @@ static int do_idleunload (int fd, const char *devname)
 	r.oflags.lob.feat = 1;
 	r.lob.feat = 0x44;
 
-	if (do_taskfile_cmd(fd, &r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, &r, 0)) {
 		err = errno;
 		perror("TASKFILE(idle_immediate_unload) failed");
 	}
 	return err;
 }
 
-static int do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
+static int do_set_max_sectors (int fd, __u64 max_lba, int permanent)
 {
 	int err = 0;
 	struct hdio_taskfile r;
 	__u8 nsect = permanent ? 1 : 0;
 
+	get_identify_data(fd);
+	if (!id)
+		exit(EIO);
 	if ((max_lba >= lba28_limit) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
@@ -1307,11 +1439,11 @@ static int do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
 	}
 
 	/* spec requires that we do this immediately in front.. racey */
-	if (!do_get_native_max_sectors(fd, id))
+	if (!do_get_native_max_sectors(fd))
 		return errno;
 
 	/* now set the new value */
-	if (do_taskfile_cmd(fd, &r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, &r, 0)) {
 		err = errno;
 		perror(" SET_MAX_ADDRESS failed");
 	}
@@ -1324,7 +1456,7 @@ static void usage_help (int clue, int rc)
 
 	fprintf(desc,"\n%s - get/set hard disk parameters - version " VERSION ", by Mark Lord.\n\n", progname);
 	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);
-	fprintf(desc,"Usage:  %s  [options] [device] ..\n\n", progname);
+	fprintf(desc,"Usage:  %s  [options] [device ...]\n\n", progname);
 	fprintf(desc,"Options:\n"
 	" -a   Get/set fs readahead\n"
 	" -A   Get/set the drive look-ahead flag (0/1)\n"
@@ -1345,10 +1477,10 @@ static void usage_help (int clue, int rc)
 	" -k   Get/set keep_settings_over_reset flag (0/1)\n"
 	" -K   Set drive keep_features_over_reset flag (0/1)\n"
 	" -L   Set drive doorlock (0/1) (removable harddisks only)\n"
-	" -M   Get/set acoustic management (0-254, 128: quiet, 254: fast)\n"
 	" -m   Get/set multiple sector count\n"
-	" -N   Get/set max visible number of sectors (HPA) (VERY DANGEROUS)\n"
+	" -M   Get/set acoustic management (0-254, 128: quiet, 254: fast)\n"
 	" -n   Get/set ignore-write-errors flag (0/1)\n"
+	" -N   Get/set max visible number of sectors (HPA) (VERY DANGEROUS)\n"
 	" -p   Set PIO mode on IDE interface chipset (0,1,2,3,4,...)\n"
 	" -P   Set drive prefetch count\n"
 	" -q   Change next setting quietly\n"
@@ -1361,7 +1493,7 @@ static void usage_help (int clue, int rc)
 	" -T   Perform cache read timings\n"
 	" -u   Get/set unmaskirq flag (0/1)\n"
 	" -U   Obsolete\n"
-	" -v   Defaults; same as -acdgkmur for IDE drives\n"
+	" -v   Use defaults; same as -acdgkmur for IDE drives\n"
 	" -V   Display program version and exit immediately\n"
 	" -w   Perform device reset (DANGEROUS)\n"
 	" -W   Get/set drive write-caching flag (0/1)\n"
@@ -1369,8 +1501,8 @@ static void usage_help (int clue, int rc)
 	" -X   Set IDE xfer mode (DANGEROUS)\n"
 	" -y   Put drive in standby mode\n"
 	" -Y   Put drive to sleep\n"
-	" -Z   Disable Seagate auto-powersaving mode\n"
 	" -z   Re-read partition table\n"
+	" -Z   Disable Seagate auto-powersaving mode\n"
 	" --dco-freeze      Freeze/lock current device configuration until next power cycle\n"
 	" --dco-identify    Read/dump device configuration identify data\n"
 	" --dco-restore     Reset device configuration back to factory defaults\n"
@@ -1387,12 +1519,14 @@ static void usage_help (int clue, int rc)
 	" --Istdin          Read identify data from stdin as ASCII hex\n"
 	" --Istdout         Write identify data to stdout as ASCII hex\n"
 	" --make-bad-sector Deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
+	" --offset          use with -t, to begin timings at given offset (in GiB) from start of drive\n"
 	" --prefer-ata12    Use 12-byte (instead of 16-byte) SAT commands when possible\n"
 	" --read-sector     Read and dump (in hex) a sector directly from the media\n"
 	" --security-help   Display help for ATA security commands\n"
 	" --trim-sector-ranges        Tell SSD firmware to discard unneeded data sectors: lba:count ..\n"
 	" --trim-sector-ranges-stdin  Same as above, but reads lba:count pairs from stdin\n"
 	" --verbose         Display extra diagnostics from some commands\n"
+	//" --wdidle3         Issue the Western Digitial \"Idle3\" command (EXTREMELY DANGEROUS)\n"
 	" --write-sector    Repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
@@ -1404,8 +1538,8 @@ static void security_help (int rc)
 
 	fprintf(desc, "\n"
 	"ATA Security Commands:\n"
-	" Most of these are VERY DANGEROUS and can KILL your drive!\n"
-	" Due to bugs in most Linux kernels, use of these commands may even\n"
+	" Most of these are VERY DANGEROUS and can destroy all of your data!\n"
+	" Due to bugs in older Linux kernels, use of these commands may even\n"
 	" trigger kernel segfaults or worse.  EXPERIMENT AT YOUR OWN RISK!\n"
 	"\n"
 	" --security-freeze           Freeze security settings until reset.\n"
@@ -1423,8 +1557,8 @@ static void security_help (int rc)
 	"                                  h   high security (default).\n"
 	"                                  m   maximum security.\n"
 	" --user-master    WHICH      Use WHICH to choose password type:\n"
-	"                                  u   user-password.\n"
-	"                                  m   master-password (default).\n"
+	"                                  u   user-password (default).\n"
+	"                                  m   master-password\n"
 	);
 	exit(rc);
 }
@@ -1434,8 +1568,8 @@ void process_dev (char *devname)
 	int fd;
 	int err = 0;
 	static long parm, multcount;
-	__u16 *id = (void *)-1;
 
+	id = NULL;
 	fd = open(devname, open_flags);
 	if (fd < 0) {
 		err = errno;
@@ -1449,9 +1583,11 @@ void process_dev (char *devname)
 		if (num_flags_processed > 1 || argc)
 			usage_help(12,EINVAL);
 		confirm_please_destroy_my_drive("--trim-sector-ranges-stdin", "This might destroy the drive and/or all data on it.");
-		exit(do_trim_from_stdin(fd, devname, id));
+		exit(do_trim_from_stdin(fd, devname));
 	}
 
+	//if (set_wdidle3)
+	//	do_wdidle3(fd, devname);
 	if (set_fsreadahead) {
 		if (get_fsreadahead)
 			printf(" setting fs readahead to %d\n", fsreadahead);
@@ -1497,7 +1633,7 @@ void process_dev (char *devname)
 			} else {
 				__u8 args[4] = {ATA_OP_SET_MULTIPLE,mult,0,0};
 				confirm_i_know_what_i_am_doing("-m", "Only the old IDE drivers work correctly with -m with kernels up to at least 2.6.29.\nlibata drives may fail and get hung if you set this flag.");
-				if (do_drive_cmd(fd, args)) {
+				if (do_drive_cmd(fd, args, 0)) {
 					err = errno;
 					perror(" HDIO_DRIVE_CMD(set_multi_count) failed");
 				}
@@ -1567,7 +1703,7 @@ void process_dev (char *devname)
 			printf(" setting drive doorlock to %d", doorlock);
 			on_off(doorlock);
 		}
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, timeout_15secs)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(doorlock) failed");
 		}
@@ -1580,7 +1716,7 @@ void process_dev (char *devname)
 			on_off(dkeep);
 		}
 		args[2] = dkeep ? 0x66 : 0xcc;
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(keepsettings) failed");
 		}
@@ -1590,7 +1726,7 @@ void process_dev (char *devname)
 		args[2] = defects ? 0x04 : 0x84;
 		if (get_defects)
 			printf(" setting drive defect management to %d\n", defects);
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(defectmgmt) failed");
 		}
@@ -1600,7 +1736,7 @@ void process_dev (char *devname)
 		args[1] = prefetch;
 		if (get_prefetch)
 			printf(" setting drive prefetch to %d\n", prefetch);
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(setprefetch) failed");
 		}
@@ -1612,7 +1748,7 @@ void process_dev (char *devname)
 			printf(" setting xfermode to %d", xfermode_requested);
 			interpret_xfermode(xfermode_requested);
 		}
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(setxfermode) failed");
 		}
@@ -1624,7 +1760,7 @@ void process_dev (char *devname)
 			printf(" setting drive read-lookahead to %d", lookahead);
 			on_off(lookahead);
 		}
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(setreadahead) failed");
 		}
@@ -1635,7 +1771,7 @@ void process_dev (char *devname)
 			__u8 args1[4] = {ATA_OP_SETFEATURES,0,0x07,0}; /* spinup from standby */
 			printf(" spin-up:");
 			fflush(stdout);
-			(void) do_drive_cmd(fd, args1);
+			(void) do_drive_cmd(fd, args1, 0);
 		} else {
 			confirm_i_know_what_i_am_doing("-s1",
 				"This requires BIOS and kernel support to recognize/boot the drive.");
@@ -1647,7 +1783,7 @@ void process_dev (char *devname)
 		}
 		args[0] = ATA_OP_SETFEATURES;
 		args[2] = powerup_in_standby ? 0x06 : 0x86;
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(powerup_in_standby) failed");
 		}
@@ -1667,12 +1803,13 @@ void process_dev (char *devname)
 			if (get_apmmode)
 				printf(" 0x%02x (%d)\n",apmmode,apmmode);
 		}
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD failed");
 		}
 	}
 	if (set_cdromspeed) {
+		int err1, err2;
 		/* The CDROM_SELECT_SPEED ioctl
 		 * actually issues GPCMD_SET_SPEED to the drive.
 		 * But many newer DVD drives want GPCMD_SET_STREAMING instead,
@@ -1680,11 +1817,11 @@ void process_dev (char *devname)
 		 */
 		if (get_cdromspeed)
 			printf ("setting cd/dvd speed to %d\n", cdromspeed);
-		if (set_dvdspeed(fd, cdromspeed) != 0) {
-			if (ioctl (fd, CDROM_SELECT_SPEED, cdromspeed)) {
-				err = errno;
-				perror(" CDROM_SELECT_SPEED failed");
-			}
+		err1 = set_dvdspeed(fd, cdromspeed);
+		err2 = ioctl(fd, CDROM_SELECT_SPEED, cdromspeed);
+		if (err1 && err2) {
+			err = errno;
+			perror(" SET_STREAMING/CDROM_SELECT_SPEED both failed");
 		}
 	}
 	if (set_acoustic) {
@@ -1695,7 +1832,7 @@ void process_dev (char *devname)
 		args[1] = acoustic;
 		args[2] = acoustic ? 0x42 : 0xc2;
 		args[3] = 0;
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD:ACOUSTIC failed");
 		}
@@ -1706,25 +1843,24 @@ void process_dev (char *devname)
 			on_off(wcache);
 		}
 		if (!wcache)
-			err = flush_wcache(fd, &id);
+			err = flush_wcache(fd);
 		if (ioctl(fd, HDIO_SET_WCACHE, wcache)) {
 			__u8 setcache[4] = {ATA_OP_SETFEATURES,0,0,0};
 			setcache[2] = wcache ? 0x02 : 0x82;
-			if (do_drive_cmd(fd, setcache)) {
+			if (do_drive_cmd(fd, setcache, 0)) {
 				err = errno;
 				perror(" HDIO_DRIVE_CMD(setcache) failed");
 			}
 		}
 		if (!wcache)
-			err = flush_wcache(fd, &id);
+			err = flush_wcache(fd);
 	}
 	if (set_standbynow) {
 		__u8 args1[4] = {ATA_OP_STANDBYNOW1,0,0,0};
 		__u8 args2[4] = {ATA_OP_STANDBYNOW2,0,0,0};
 		if (get_standbynow)
 			printf(" issuing standby command\n");
-		if (do_drive_cmd(fd, args1)
-		 && do_drive_cmd(fd, args2)) {
+		if (do_drive_cmd(fd, args1, 0) && do_drive_cmd(fd, args2, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(standby) failed");
 		}
@@ -1733,7 +1869,7 @@ void process_dev (char *devname)
 		__u8 args[4] = {ATA_OP_IDLEIMMEDIATE,0,0,0};
 		if (get_idleimmediate)
 			printf(" issuing idle_immediate command\n");
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(idle_immediate) failed");
 		}
@@ -1748,8 +1884,7 @@ void process_dev (char *devname)
 		__u8 args2[4] = {ATA_OP_SLEEPNOW2,0,0,0};
 		if (get_sleepnow)
 			printf(" issuing sleep command\n");
-		if (do_drive_cmd(fd, args1)
-		 && do_drive_cmd(fd, args2)) {
+		if (do_drive_cmd(fd, args1, 0) && do_drive_cmd(fd, args2, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(sleep) failed");
 		}
@@ -1766,7 +1901,7 @@ void process_dev (char *devname)
 		__u8 args[4] = {ATA_OP_DCO,0,0xc0,0};
 		confirm_i_know_what_i_am_doing("--dco-restore", "You are trying to deliberately reset your drive configuration back to the factory defaults.\nThis may change the apparent capacity and feature set of the drive, making all data on it inaccessible.\nYou could lose *everything*.");
 		printf(" issuing DCO restore command\n");
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(dco_restore) failed");
 		}
@@ -1774,7 +1909,7 @@ void process_dev (char *devname)
 	if (do_dco_freeze) {
 		__u8 args[4] = {ATA_OP_DCO,0,0xc1,0};
 		printf(" issuing DCO freeze command\n");
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(dco_freeze) failed");
 		}
@@ -1782,7 +1917,7 @@ void process_dev (char *devname)
 	if (security_freeze) {
 		__u8 args[4] = {ATA_OP_SECURITY_FREEZE_LOCK,0,0,0};
 		printf(" issuing security freeze command\n");
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(security_freeze) failed");
 		}
@@ -1791,7 +1926,7 @@ void process_dev (char *devname)
 		__u8 args[4] = {0xfb,0,0,0};
 		if (get_seagate)
 			printf(" disabling Seagate auto powersaving mode\n");
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(seagatepwrsave) failed");
 		}
@@ -1802,7 +1937,7 @@ void process_dev (char *devname)
 			printf(" setting standby to %u", standby);
 			interpret_standby();
 		}
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(setidle) failed");
 		}
@@ -1818,19 +1953,19 @@ void process_dev (char *devname)
 	if (set_max_sectors) {
 		if (get_native_max_sectors)
 			printf(" setting max visible sectors to %llu (%s)\n", set_max_addr, set_max_permanent ? "permanent" : "temporary");
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			if (set_max_addr < get_lba_capacity(id))
 				confirm_i_know_what_i_am_doing("-Nnnnnn", "You have requested reducing the apparent size of the drive.\nThis is a BAD idea, and can easily destroy all of the drive's contents.");
-			err = do_set_max_sectors(fd, id, set_max_addr - 1, set_max_permanent);
-			id = (void *)-1; /* invalidate existing identify data */
+			err = do_set_max_sectors(fd, set_max_addr - 1, set_max_permanent);
+			id = NULL; /* invalidate existing identify data */
 		}
 	}
 	if (make_bad_sector) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
-			err = do_make_bad_sector(fd, id, make_bad_sector_addr, devname);
+			err = do_make_bad_sector(fd, make_bad_sector_addr, devname);
 		}
 	}
 #ifdef FORMAT_AND_ERASE
@@ -1863,7 +1998,7 @@ void process_dev (char *devname)
 		abort_if_not_full_device (fd, 0, devname, "--fwdownload requires the raw device, not a partition.");
 		confirm_i_know_what_i_am_doing("--fwdownload", "This flag has not been tested with many drives to date.\nYou are trying to deliberately overwrite the drive firmware with the contents of the specified file.\nIf this fails, your drive could be toast.");
 		confirm_please_destroy_my_drive("--fwdownload", "This might destroy the drive and well as all of the data on it.");
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			err = fwdownload(fd, id, fwpath, xfer_mode);
 			if (err)
@@ -1873,23 +2008,23 @@ void process_dev (char *devname)
 	if (read_sector)
 		err = do_read_sector(fd, read_sector_addr, devname);
 	if (drq_hsm_error) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			__u8 args[4] = {0,0,0,0};
 			args[0] = last_identify_op;
 			printf(" triggering \"stuck DRQ\" host state machine error\n");
 			flush_buffer_cache(fd);
 			sleep(1);
-			do_drive_cmd(fd, args);
+			do_drive_cmd(fd, args, timeout_60secs);
 			err = errno;
 			perror("drq_hsm_error");
 			fprintf(stderr, "ata status=0x%02x ata error=0x%02x\n", args[0], args[1]);
 		}
 	}
-	id = (void *)-1; /* force re-IDENTIFY in case something above modified settings */
+	id = NULL; /* force re-IDENTIFY in case something above modified settings */
 	if (get_hitachi_temp) {
 		__u8 args[4] = {0xf0,0,0x01,0}; /* "Sense Condition", vendor-specific */
-		if (do_drive_cmd(fd, args)) {
+		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(hitachisensecondition) failed");
 		} else {
@@ -1908,7 +2043,7 @@ void process_dev (char *devname)
 		err = 0;
 		if (ioctl(fd, HDIO_GET_MULTCOUNT, &multcount)) {
 			err = errno;
-			id = get_identify_data(fd, id);
+			get_identify_data(fd);
 			if (id) {
 				err = 0;
 				if ((id[59] & 0xff00) == 0x100)
@@ -2021,9 +2156,9 @@ void process_dev (char *devname)
 	if (get_powermode) {
 		__u8 args[4] = {ATA_OP_CHECKPOWERMODE1,0,0,0};
 		const char *state = "unknown";
-		if (do_drive_cmd(fd, args)
+		if (do_drive_cmd(fd, args, 0)
 		 && (args[0] = ATA_OP_CHECKPOWERMODE2) /* (single =) try again with 0x98 */
-		 && do_drive_cmd(fd, args)) {
+		 && do_drive_cmd(fd, args, 0)) {
 			err = errno;
 		} else {
 			switch (args[2]) {
@@ -2054,7 +2189,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (do_IDentity) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			if (do_IDentity == 2)
 				dump_sectors(id, 1);
@@ -2063,7 +2198,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_lookahead) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			int supported = id[82] & 0x0040;
 			if (supported) {
@@ -2076,7 +2211,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_wcache) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			int supported = id[82] & 0x0020;
 			if (supported) {
@@ -2089,10 +2224,10 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_apmmode) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			printf(" APM_level	= ");
-			if((id[83] & 0xc008) == 0x4008) {
+			if ((id[83] & 0xc008) == 0x4008) {
 				if (id[86] & 0x0008)
 					printf("%u\n", id[91] & 0xff);
 				else
@@ -2102,7 +2237,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_acoustic) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			int supported = id[83] & 0x200;
 			if (supported) 
@@ -2121,10 +2256,10 @@ void process_dev (char *devname)
 	}
 	if (get_native_max_sectors) {
 		__u64 visible, native;
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			visible = get_lba_capacity(id);
-			native  = do_get_native_max_sectors(fd, id);
+			native  = do_get_native_max_sectors(fd);
 			if (!native) {
 				err = errno;
 			} else {
@@ -2152,7 +2287,7 @@ void process_dev (char *devname)
 	if (do_ctimings)
 		time_cache(fd);
 	if (do_flush_wcache)
-		err = flush_wcache(fd, &id);
+		err = flush_wcache(fd);
 	if (do_timings)
 		err = time_device(fd);
 	if (do_flush)
@@ -2454,6 +2589,10 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "prefer-ata12")) {
 		prefer_ata12 = 1;
 		--num_flags_processed;	/* doesn't count as an action flag */
+	} else if (0 == strcasecmp(name, "offset")) {
+		set_timings_offset = 1;
+		get_u64_parm(0, 0, NULL, &timings_offset, 0, ~0, name, "GB offset for -t flag");
+		timings_offset *= 0x40000000ULL;
 	} else if (0 == strcasecmp(name, "yes-i-know-what-i-am-doing")) {
 		i_know_what_i_am_doing = 1;
 		--num_flags_processed;	/* doesn't count as an action flag */
@@ -2508,8 +2647,6 @@ get_longarg (void)
 		trim_from_stdin = 1;
 	} else if (0 == strcasecmp(name, "trim-sector-ranges")) {
 		int i, optional = 0, max_ranges = argc;
-		// FIXME Someday: this is silly, we should just mmap() the final form here,
-		// FIXME  instead of this intermediate data structure!
 		trim_sector_ranges = malloc(sizeof(struct sector_range_s) * max_ranges);
 		if (!trim_sector_ranges) {
 			int err = errno;
@@ -2537,6 +2674,8 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "read-sector")) {
 		read_sector = 1;
 		get_u64_parm(0, 0, NULL, &read_sector_addr, 0, lba_limit, name, lba_emsg);
+	//} else if (0 == strcasecmp(name, "wdidle3")) {
+	//	set_wdidle3 = 1;
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {
