@@ -96,6 +96,11 @@ undo_slow_down_raid_sync()
   fi
 }
 
+isOnBattery() {
+	on_ac_power 2>/dev/null
+	[ $? -eq 1 ]
+}
+
 set_option()
 {
   if test -n "$DISC"; then
@@ -143,9 +148,6 @@ WAS_RUN=0
 if [ "$raidstat" != 'OK' ] && [ "$RAID_WORKAROUND" = "yes" ]; then
   slow_down_raid_sync
 fi
-
-# Get blocks as far as the drive's write cache.
-/bin/sync
 
 [ "$UDEV" = 'yes' ] || log_daemon_msg "Setting parameters of disc"
 
@@ -201,8 +203,15 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
             bus) 
               eval_value $VALUE -b
               ;;
-            apm) 
-              set_option -B$VALUE
+            apm)
+              if ! isOnBattery; then
+                  set_option -B$VALUE
+              fi
+              ;;
+            apm_battery)
+              if isOnBattery; then
+                  set_option -B$VALUE
+              fi
               ;;
             io32_support) 
               set_option -c$VALUE
@@ -334,14 +343,12 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
                 ret=0
                 if [ "$UDEV" = 'yes' ] && [ "$IN_BLOCK" = 1 ]; then
                   # Flush the drive's internal write cache to the disk.
-                  /sbin/hdparm -q -f $DISC 2>/dev/null || ret=$?
                   /sbin/hdparm $OPTIONS $DISC 2>/dev/null || ret=$?
                   if [ "$VERBOSE" = 'yes' ]; then
                     log_progress_msg " $DISC"
                     log_end_msg $ret || true
                   fi
                 elif [ "$UDEV" = 'no' ]; then
-                  /sbin/hdparm -q -f $DISC 2>/dev/null || ret=$?
                   /sbin/hdparm $OPTIONS $DISC 2>/dev/null || ret=$?
                   WAS_RUN=1
                   log_progress_msg " $DISC"
@@ -391,7 +398,6 @@ egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf |
     for drive in $harddisks; do
       WAS_RUN=1
       log_progress_msg "$drive "
-      /sbin/hdparm -q -f $drive 2>/dev/null|| ret=$?
       /sbin/hdparm -q $hdparm_opts -q $drive 2>/dev/null|| ret=$?
     done
     log_end_msg $ret || true

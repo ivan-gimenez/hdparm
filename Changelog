@@ -1,3 +1,28 @@
+hdparm-9.39
+	- added -R flag to control Read-Write-Verify feature, courtesy of Gordan Bobic
+	- nuked leftover sgio.c.orig file
+hdparm-9.38
+	- updated wiper.sh to allow all SCSI_DISK major numbers
+	- updated handing for very long SECURITY-ERASE times
+	- added -J flag for wdidle3 set/get
+hdparm-9.37
+	- handle raid1 start_lba values, and show -1 for indeterminte raid start_lba values
+	- abort --fibmap when start_lba is indeterminate
+	- updated wiper.sh to fix a kink with hfsplus filesystems
+	- updated wiper.sh to no longer rely on the obsolete "rdev" command
+hdparm-9.36
+	- udpated raid1ext4trim.sh script to version 1.4
+	- updated wiper.sh to support hfsplus and ntfs filesystem types, courtesy of Heiko Wegeler
+	- updated wiper.sh with new flag to enable unattended operation, and handle SIGPIPE
+	- updated manpage to indicate max sector range of 65335 for TRIM
+hdparm-9.35
+	- third go at fixing cdb issues, fixing -B flag.  Got it this time (finally).
+hdparm-9.34
+	- fix bad/missing cdb transfer length field for IDENTIFY and some other commands
+hdparm-9.33
+	- fix AHCI issues in sg16(): don't ask for sense_data on DATA-xfer commands
+	- fix compiler warnings on old systems
+	- fixed compilation on old systems lacking __be16
 hdparm-9.32
 	- fix b0rked (since 9.27?) SET_FEATURES commands; eg. -B, -M, etc..
 hdparm-9.31

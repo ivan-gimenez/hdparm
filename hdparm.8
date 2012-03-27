@@ -1,4 +1,4 @@
-.TH HDPARM 8 "September 2010" "Version 9.32"
+.TH HDPARM 8 "January 2012" "Version 9.39"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -308,6 +308,31 @@ later use with the
 .B --Istdin
 option.
 .TP
+.I -J
+Get/set the Western Digital (WD) Green Drive's "idle3" timeout value.
+This timeout controls how often the drive parks its heads and enters
+a low power consumption state.  The factory default is eight (8) seconds,
+which is a very poor choice for use with Linux.  Leaving it at the default
+will result in hundreds of thousands of head load/unload cycles in a very
+short period of time.  The drive mechanism is only rated for 300,000 to 1,000,000
+cycles, so leaving it at the default could result in premature failure,
+not to mention the performance impact of the drive often having to wake-up
+before doing routine I/O.
+.IP
+WD supply a WDIDLE3.EXE DOS utility for tweaking this setting,
+and you should use that program instead of hdparm
+if at all possible.  The reverse-engineered implementation in hdparm
+is not as complete as the original official program, even though it does
+seem to work on at a least a few drives.  A full power cycle is required
+for any change in setting to take effect, regardless of which program is
+used to tweak things.
+.IP
+A setting of 30 seconds is recommended for Linux use.
+Permitted values are from 8 to 12 seconds, and from 30 to 300 seconds
+in 30-second increments.
+Specify a value of zero (0) to disable the WD idle3 timer completely
+(NOT RECOMMENDED!).
+.TP
 .I -k
 Get/set the "keep_settings_over_reset" flag for the drive.
 When this flag is set, the drive will preserve the
@@ -517,6 +542,17 @@ For SATA disks, this is the Native Command Queuing (NCQ) queue depth.
 .I -r
 Get/set read-only flag for the device.  When set, Linux disallows write operations on the device.
 .TP
+.I -R
+Get/set Write-Read-Verify feature, if the drive supports it.
+Usage:
+.B -R0
+(disable) or
+.B -R1
+(enable).  This feature is intended to have the drive firmware automatically
+read-back any data that is written by software, to verify that the data was
+successfully written.  This is generally overkill, and can slow down disk
+writes by as much as a factor of two (or more).
+.TP
 .I --read-sector
 Reads from the specified sector number, and dumps the contents in hex to standard output.
 The sector number must be given (base10) after this option.
@@ -598,7 +634,7 @@ been present within them.  This makes those sectors available for
 immediate use by the firmware's garbage collection mechanism, to
 improve scheduling for wear-leveling of the flash media.
 This option expects one or more sector range pairs immediately after the option:
-an LBA starting address, a colon, and a sector count, with no intervening spaces.
+an LBA starting address, a colon, and a sector count (max 65535), with no intervening spaces.
 .B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS OPTION!!
 .IP
 E.g.

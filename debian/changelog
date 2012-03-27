@@ -1,3 +1,41 @@
+hdparm (9.39-1) unstable; urgency=low
+
+  * New upstream version (closes: #602522, #631614, #639660)
+  * Added myself to uploaders
+  * Added Homepage field (closes: #533190, #545005)
+  * Changed linking stage to not strip binary, otherwise the debug package
+    would be empty
+  * Renamed XC-Package-Type to Package-Type
+  * No longer install idectl, that relies on options that were removed, and
+    ultrabayd, that relies on idectl (closes: #511283)
+  * Install UDEV rule to /lib/udev/rules.d (closes: #563762, #622568) 
+  * Bumped build dependency on debhelper for correct udev handling.
+  * Install wiper.sh into its own subdirectory together with its README.txt
+  * Recommend powermgmt-base
+  * Thanks to Dmitry Smirnov <onlyjob@member.fsf.org>:
+    + Added description to init file 
+    + Updated watch file to fetch from sourceforge
+    + Clean up old rules from /etc/udev in postinst
+  * Taken from Ubuntu:
+    + pm-utils script 95-hdparm-apm:
+      - run hdparm on wakeup (closes: #468307)
+      - full integration with pm-utils (closes: #510676)
+      - adjust hard drive APM settings (closes: #664041)
+    + /lib/hdparm/hdparm-functions:
+      -  prepare to replace our init script eventually
+      -  special handling for Firewire/USB (closes: #654873)
+    + hdparm.init:
+      - only use the 'apm' setting when we're not on battery; when we are on
+        battery, apply the separate 'apm_battery' setting.
+      - Don't call hdparm -f for every drive; no clear rationale was ever given
+        for doing this, and doing so slows down hard drive access at boot time.
+      - also don't call sync... (closes: #546813)
+    * hdparm.conf.5
+  * hdparm.conf: added apm_battery, removed command_line example
+  * Bumped Standards-Version to 3.9.3, no changes needed
+
+ -- Michael Meskes <meskes@debian.org>  Tue, 27 Mar 2012 12:10:19 +0200
+
 hdparm (9.32-1) unstable; urgency=low
 
   * New upstream version (closes: #574897)

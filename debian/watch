@@ -1,2 +1,4 @@
-version=2
-http://www.ibiblio.org/pub/Linux/system/hardware (?:.*/)?hdparm-?_?([\w+\d+\.]+|\d+)(\.tar|\.tgz)(\.gz|\.bz2|) debian uupdate
+version=3
+
+http://sf.net/hdparm/hdparm[-_]([\d+\.]+)(?:\.tar|\.tgz)(?:\.gz|\.bz2|) \
+ debian uupdate

@@ -63,6 +63,9 @@ bus = on
 \fB\-B\fR apm setting
 apm = 255
 .TP
+\fB\-B\fR apm setting when on battery
+apm_battery = 127
+.TP
 \fB\-c\fR enable (E)IDE 32-bit I/O support - can be any of 0,1,3
 io32_support = 1
 .TP
@@ -142,14 +145,11 @@ Root file systems.
 Please see README.Debian for details.
 ROOTFS = /dev/hda
 .PP
-You can use straight hdparm commands in this config file 
-as well \- the set up is ugly, but it keeps backwards compatibility.
-Additionally, it should be noted that any blocks that begin with 
-the keyword 'command_line' are not run until after the root filesystem
-is mounted.
-This is done to avoid running blocks twice.  If you need 
-to run hdparm to set parameters for your root disk, please use the 
-standard format.
+Blocks beginning with the keyword 'command_line' instead of a device
+identifier are no longer supported for backwards compatibility by this
+version of hdparm.  Options must be introduced by a correct device
+identifier instead so that they will be applied when the device becomes
+available.
 .SH AUTHOR
 hdparm was written by Mark Lord <mlord@pobox.com>
 The init script and configuration file are currently maintained by 

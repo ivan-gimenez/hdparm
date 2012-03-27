@@ -1,5 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2008 -- freely distributable */
+/*          - by Mark Lord (C) 1994-2012 -- freely distributable */
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
@@ -35,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.32"
+#define VERSION "v9.39"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -48,15 +48,6 @@ extern const char *minor_str[];
 #define TIMING_BUF_MB		2
 #define TIMING_BUF_BYTES	(TIMING_BUF_MB * 1024 * 1024)
 
-#ifndef ATA_OP_SECURITY_FREEZE_LOCK
-	#define ATA_OP_SECURITY_SET_PASS	0xF1
-	#define ATA_OP_SECURITY_UNLOCK		0xF2
-	#define ATA_OP_SECURITY_ERASE_PREPARE	0xF3
-	#define ATA_OP_SECURITY_ERASE_UNIT	0xF4
-	#define ATA_OP_SECURITY_FREEZE_LOCK	0xF5
-	#define ATA_OP_SECURITY_DISABLE		0xF6
-#endif
-
 char *progname;
 int verbose = 0;
 int prefer_ata12 = 0;
@@ -64,7 +55,7 @@ static int do_defaults = 0, do_flush = 0, do_ctimings, do_timings = 0;
 static int do_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
 static int do_flush_wcache = 0;
 
-//static int set_wdidle3  = 0;
+static int set_wdidle3  = 0, get_wdidle3 = 0, wdidle3 = 0;
 static int   set_timings_offset = 0;
 static __u64 timings_offset = 0;
 static int set_fsreadahead= 0, get_fsreadahead= 0, fsreadahead= 0;
@@ -110,6 +101,7 @@ static int do_fwdownload = 0, xfer_mode = 0;
 static int	set_busstate = 0, get_busstate = 0, busstate = 0;
 static int	set_reread_partn = 0, get_reread_partn;
 static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
+static int write_read_verify = 0, get_write_read_verify = 0, set_write_read_verify = 0;
 
 static int   make_bad_sector = 0, make_bad_sector_flagged;
 static __u64 make_bad_sector_addr = ~0ULL;
@@ -715,15 +707,25 @@ static unsigned int get_erase_timeout_secs (int fd, int enhanced)
 	if (id) {
 		timeout = id[idx];
 		if (timeout && timeout <= 0xff) {
-			if (timeout == 0xff)
+			/*
+			 * 0xff means "more than 254 2-minute intervals (508+ minutes),
+			 * but we really want a better idea than that.
+			 * Norman Diamond suggests allowing 1sec per 30MB of capacity.
+			 */
+			if (timeout == 0xff) {
+				__u64 lba_limit = get_lba_capacity(id);
+				__u64 estimate = (lba_limit / 2048ULL) / 30ULL / 60;
 				timeout = 508 + 60;  /* spec says > 508 minutes */
-			else
+				if (timeout < estimate)
+					timeout = estimate;
+			} else {
 				timeout = (timeout * 2) + 5;  /* Add on a 5min margin */
+			}
 		}
 	}
 	if (!timeout)
 		timeout = 2 * 60;  /* default: two hours */
-	timeout *= 60; /* secs */
+	timeout *= 60; /* convert minutes to seconds */
 	return timeout;
 }
 
@@ -787,7 +789,7 @@ do_set_security (int fd)
 			exit(EINVAL);
 	}
 	printf(" Issuing %s command, password=\"%s\", user=%s",
-		description, security_password, data[0] ? "master" : "user");
+		description, security_password, (data[0] & 1) ? "master" : "user");
 	if (security_command == ATA_OP_SECURITY_SET_PASS)
 		printf(", mode=%s", data[1] ? "max" : "high");
 	printf("\n");
@@ -865,10 +867,9 @@ static void get_identify_data (int fd)
 	args[3] = 1;	/* sector count */
 	if (do_drive_cmd(fd, args, 0)) {
 		prefer_ata12 = 0;
+		memset(args, 0, sizeof(args));
 		last_identify_op = ATA_OP_PIDENTIFY;
 		args[0] = last_identify_op;
-		args[1] = 0;
-		args[2] = 0;
 		args[3] = 1;	/* sector count */
 		if (do_drive_cmd(fd, args, 0)) {
 			perror(" HDIO_DRIVE_CMD(identify) failed");
@@ -945,55 +946,19 @@ static int abort_if_not_full_device (int fd, __u64 lba, const char *devname, con
 
 	if (start_lba == 0ULL)
 		return 0;
-	if (msg) {
+	if (start_lba == START_LBA_UNKNOWN || fd_is_raid(fd)) {
+		fprintf(stderr, "%s is a RAID device: please specify an absolute LBA of a raw member device instead (raid1 only)\n", devname);
+	} else if (msg) {
 		fprintf(stderr, "%s\n", msg);
 	} else {
 		fprintf(stderr, "Device %s has non-zero LBA starting offset of %llu.\n", devname, start_lba);
-		fprintf(stderr, "Please use an absolute LBA with the /dev/ entry for the full device, rather than a partition name.\n");
+		fprintf(stderr, "Please use an absolute LBA with the /dev/ entry for the raw device, rather than a partition or raid name.\n");
 		fprintf(stderr, "%s is probably a partition of %s (?)\n", devname, fdevname);
 		fprintf(stderr, "The absolute LBA of sector %llu from %s should be %llu\n", lba, devname, start_lba + lba);
 	}
 	fprintf(stderr, "Aborting.\n");
 	exit(EINVAL);
 }
-
-#if 0
-static int do_wdidle3 (int fd, const char *devname)
-{
-	struct ata_tf tf;
-	int err = 0;
-	const unsigned char vu_op = 0x8a;
-
-	abort_if_not_full_device(fd, 0, devname, NULL);
-	confirm_please_destroy_my_drive("--wdidle3", "This is not fully implemented yet, and could destroy the drive and/or all data on it.");
-	printf("attempting to tweak Western Digital \"idle-3\" parameters\n");
-	fflush(stdout);
-
-  {
-    unsigned char bits;
-    for (bits = 0; bits <= 0x1f; ++bits) {
-	tf_init(&tf, vu_op, 0, 0);
-	tf.lob.feat  = 'W';
-	tf.lob.nsect = 'D';
-	tf.lob.lbal  = 'C';
-	tf.lob.lbam  = 0x00;
-	tf.lob.lbah  = 0x00;
-	tf.dev       = 0xa0 | (tf.dev & 0xb0) | (bits & 0xf);
-	if (bits >= 0x10)
-		tf.dev |= 0x40;
-
-	/* This probably wants to transfer data, but.. ???? */
-	if (sg16(fd, SG_WRITE, SG_PIO, &tf, NULL, 0, 5 /* seconds */)) {
-		err = errno;
-		perror("FAILED");
-	} else {
-		printf("succeeded\n");
-	}
-    }
-  }
-	return err;
-}
-#endif
 
 static __u16 *get_dco_identify_data (int fd, int quietly)
 {
@@ -1024,6 +989,9 @@ static __u64 do_get_native_max_sectors (int fd)
 	__u64 max = 0;
 	struct hdio_taskfile r;
 
+	get_identify_data(fd);
+	if (!id)
+		exit(EIO);
 	memset(&r, 0, sizeof(r));
 	r.cmd_req = TASKFILE_CMD_REQ_NODATA;
 	r.dphase  = TASKFILE_DPHASE_NONE;
@@ -1035,9 +1003,6 @@ static __u64 do_get_native_max_sectors (int fd)
 	r.iflags.lob.lbah     = 1;
 	r.lob.dev = 0x40;
 
-	get_identify_data(fd);
-	if (!id)
-		exit(EIO);
 	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
 		r.iflags.hob.lbal  = 1;
 		r.iflags.hob.lbam  = 1;
@@ -1249,7 +1214,7 @@ extract_id_string (__u16 *idw, int words, char *dst)
 
 	for (i = 0; i < words; ++i) {
 		__u16 w = idw[i];
-		w = (__u16)(__be16)(w);
+		w = __be16_to_cpu(w);
 		dst[i*2  ] = w >> 8;
 		dst[i*2+1] = w;
 	}
@@ -1474,6 +1439,7 @@ static void usage_help (int clue, int rc)
 	" -H   Read temperature from drive (Hitachi only)\n"
 	" -i   Display drive identification\n"
 	" -I   Detailed/current information directly from drive\n"
+	" -J   Get/set Western DIgital \"Idle3\" timeout for a WDC \"Green\" drive (DANGEROUS)\n"
 	" -k   Get/set keep_settings_over_reset flag (0/1)\n"
 	" -K   Set drive keep_features_over_reset flag (0/1)\n"
 	" -L   Set drive doorlock (0/1) (removable harddisks only)\n"
@@ -1485,8 +1451,8 @@ static void usage_help (int clue, int rc)
 	" -P   Set drive prefetch count\n"
 	" -q   Change next setting quietly\n"
 	" -Q   Get/set DMA queue_depth (if supported)\n"
-	" -r   Get/set device  readonly flag (DANGEROUS to set)\n"
-	" -R   Obsolete\n"
+	" -r   Get/set device readonly flag (DANGEROUS to set)\n"
+	" -R   Get/set device write-read-verify flag\n"
 	" -s   Set power-up in standby flag (0/1) (DANGEROUS)\n"
 	" -S   Set standby (spindown) timeout\n"
 	" -t   Perform device read timings\n"
@@ -1526,7 +1492,6 @@ static void usage_help (int clue, int rc)
 	" --trim-sector-ranges        Tell SSD firmware to discard unneeded data sectors: lba:count ..\n"
 	" --trim-sector-ranges-stdin  Same as above, but reads lba:count pairs from stdin\n"
 	" --verbose         Display extra diagnostics from some commands\n"
-	//" --wdidle3         Issue the Western Digitial \"Idle3\" command (EXTREMELY DANGEROUS)\n"
 	" --write-sector    Repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
@@ -1586,8 +1551,16 @@ void process_dev (char *devname)
 		exit(do_trim_from_stdin(fd, devname));
 	}
 
-	//if (set_wdidle3)
-	//	do_wdidle3(fd, devname);
+	if (set_wdidle3) {
+		unsigned char timeout = wdidle3_msecs_to_timeout(wdidle3);
+		confirm_please_destroy_my_drive("-J", "This implementation is not as thorough as the official WDIDLE3.EXE. Use at your own risk!");
+		if (get_wdidle3) {
+			printf(" setting wdidle3 to ");
+			wdidle3_print_timeout(timeout);
+			putchar('\n');
+		}
+		err = wdidle3_set_timeout(fd, timeout);
+	}
 	if (set_fsreadahead) {
 		if (get_fsreadahead)
 			printf(" setting fs readahead to %d\n", fsreadahead);
@@ -1722,7 +1695,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (set_defects) {
-		__u8 args[4] = {ATA_OP_SETFEATURES,0,0x04,0};
+		__u8 args[4] = {ATA_OP_SETFEATURES,0,0,0};
 		args[2] = defects ? 0x04 : 0x84;
 		if (get_defects)
 			printf(" setting drive defect management to %d\n", defects);
@@ -1835,6 +1808,19 @@ void process_dev (char *devname)
 		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD:ACOUSTIC failed");
+		}
+	}
+	if (set_write_read_verify) {
+		__u8 args[4];
+		if (get_write_read_verify)
+			printf(" setting write-read-verify to %d\n", write_read_verify);
+		args[0] = ATA_OP_SETFEATURES;
+		args[1] = write_read_verify;
+		args[2] = write_read_verify ? 0x0b : 0x8b;
+		args[3] = 0;
+		if (do_drive_cmd(fd, args, 0)) {
+			err = errno;
+			perror(" HDIO_DRIVE_CMD:WRV failed");
 		}
 	}
 	if (set_wcache) {
@@ -2149,9 +2135,22 @@ void process_dev (char *devname)
 		__u32 cyls = 0, heads = 0, sects = 0;
 		__u64 start_lba = 0, nsectors = 0;
 		err = get_dev_geometry (fd, &cyls, &heads, &sects, &start_lba, &nsectors);
-		if (!err)
-			printf(" geometry      = %u/%u/%u, sectors = %lld, start = %lld\n",
-				cyls, heads, sects, nsectors, start_lba);
+		if (!err) {
+			printf(" geometry      = %u/%u/%u, sectors = %lld, start = ", cyls, heads, sects, nsectors);
+			if (start_lba == START_LBA_UNKNOWN)
+				printf("unknown\n");
+			else
+				printf("%lld\n", start_lba);
+		}
+	}
+	if (get_wdidle3) {
+		unsigned char timeout = 0;
+		err = wdidle3_get_timeout(fd, &timeout);
+		if (!err) {
+			printf(" wdidle3      = ");
+			wdidle3_print_timeout(timeout);
+			putchar('\n');
+		}
 	}
 	if (get_powermode) {
 		__u8 args[4] = {ATA_OP_CHECKPOWERMODE1,0,0,0};
@@ -2244,6 +2243,16 @@ void process_dev (char *devname)
 				printf(" acoustic      = %2u (128=quiet ... 254=fast)\n", id[94] & 0xff);
 			else
 				printf(" acoustic      = not supported\n");
+		}
+	}
+	if (get_write_read_verify) {
+		get_identify_data(fd);
+		if (id) {
+				int supported = id[119] & 0x2;
+				if (supported)
+					printf(" write-read-verify = %2u\n", id[120] & 0x2);
+				else
+					printf(" write-read-verify = not supported\n");
 		}
 	}
 	if (get_busstate) {
@@ -2674,8 +2683,6 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "read-sector")) {
 		read_sector = 1;
 		get_u64_parm(0, 0, NULL, &read_sector_addr, 0, lba_limit, name, lba_emsg);
-	//} else if (0 == strcasecmp(name, "wdidle3")) {
-	//	set_wdidle3 = 1;
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {
@@ -2763,6 +2770,7 @@ int main (int _argc, char **_argv)
 				case     SET_FLAG('H',hitachi_temp);
 				case      DO_FLAG('i',do_identity);
 				case      DO_FLAG('I',do_IDentity);
+				case GET_SET_PARM('J',"WDC-idle3-timeout",wdidle3,0,300);
 				case GET_SET_PARM('k',"kernel-keep-settings",keep,0,1);
 				case     SET_PARM('K',"drive-keep-settings",dkeep,0,1);
 				case     SET_PARM('L',"door-lock",doorlock,0,1);
@@ -2776,6 +2784,7 @@ int main (int _argc, char **_argv)
 				case     SET_PARM('s',"powerup-in-standby",powerup_in_standby,0,1);
 				case     SET_PARM('S',"standby-interval",standby,0,255);
 				case GET_SET_PARM('r',"read-only",readonly,0,1);
+				case GET_SET_PARM('R',"write-read-verify",write_read_verify,0,3);
 				case      DO_FLAG('t',do_timings);
 				case      DO_FLAG('T',do_ctimings);
 				case GET_SET_PARM('u',"unmask-irq",unmask,0,1);

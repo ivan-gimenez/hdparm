@@ -20,7 +20,9 @@
 DEB_DH_INSTALLINIT_ARGS := '--no-start'
 #DEB_DH_LINK_ARGS := ../init.d/hdparm /etc/rcS.d/S07hdparm.first
 DEB_UPDATE_RCD_PARAMS := 'start 07 S . '
-DEB_FIXPERMS_EXCLUDE:= 20hdparm
+DEB_FIXPERMS_EXCLUDE := 20hdparm
+DEB_DH_INSTALLUDEV_ARGS := --priority=85
+DEB_MAKE_ENVVARS := STRIP="true" LDFLAGS=
 
 include /usr/share/cdbs/1/rules/debhelper.mk
 include /usr/share/cdbs/1/class/makefile.mk
@@ -31,3 +33,7 @@ common-install-prehook-arch::
 	install -d $(CURDIR)/debian/tmp/sbin
 binary-predeb/hdparm::
 	chmod 755 $(CURDIR)/debian/hdparm/etc/apm/event.d/20hdparm
+	chmod 755 $(CURDIR)/debian/hdparm/usr/lib/pm-utils/power.d/95hdparm-apm
+clean::
+	# remove cruft from orig tarball
+	rm -f debian/hdparm.postinit debian/hdparm.dirs debian/hdparm.rules debian/hdparm.postrm
