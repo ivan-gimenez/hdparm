@@ -1,5 +1,7 @@
-/* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2012 -- freely distributable */
+/*
+ * hdparm.c - Command line interface to get/set hard disk parameters.
+ *          - by Mark Lord (C) 1994-2012 -- freely distributable.
+ */
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
@@ -23,6 +25,7 @@
 #include <linux/types.h>
 #include <linux/fs.h>
 #include <linux/major.h>
+#include <endian.h>
 #include <asm/byteorder.h>
 
 #include "hdparm.h"
@@ -35,7 +38,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.39"
+#define VERSION "v9.42"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -719,7 +722,7 @@ static unsigned int get_erase_timeout_secs (int fd, int enhanced)
 				if (timeout < estimate)
 					timeout = estimate;
 			} else {
-				timeout = (timeout * 2) + 5;  /* Add on a 5min margin */
+				timeout = (timeout * 2) + 30;  /* Add on a 30min margin */
 			}
 		}
 	}
@@ -749,6 +752,8 @@ do_set_security (int fd)
 	r->dphase	= TASKFILE_DPHASE_PIO_OUT;
 	r->obytes	= 512;
 	r->lob.command	= security_command;
+	r->oflags.lob.nsect = 1;
+	r->lob.nsect        = 1;
 	data		= (__u8*)r->data;
 	data[0]		= security_master & 0x01;
 	memcpy(data+2, security_password, 32);
@@ -777,7 +782,7 @@ do_set_security (int fd)
 				if (!id)
 					exit(EIO);
 				revcode = id[92];
-				if (revcode == 0xffff)
+				if (revcode == 0xfffe)
 					revcode = 0;
 				revcode += 1;
 				data[34] = revcode;
@@ -922,8 +927,18 @@ static void dump_sectors (__u16 *w, unsigned int count)
 	unsigned int i;
 
 	for (i = 0; i < (count*256/8); ++i) {
-		printf("%04x %04x %04x %04x %04x %04x %04x %04x\n", w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
+#if 0
+		printf("%04x %04x %04x %04x %04x %04x %04x %04x\n",
+			w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
 		w += 8;
+#else
+		int word;
+		for (word = 0; word < 8; ++word) {
+			printf("%04x", le16toh(w[0]));
+			++w;
+			putchar(word == 7 ? '\n' : ' ');
+		}
+#endif
 	}
 }
 
@@ -1517,7 +1532,7 @@ static void security_help (int rc)
 	" --security-erase    PASSWD  Erase a (locked) drive.\n"
 	" --security-erase-enhanced PASSWD   Enhanced-erase a (locked) drive.\n"
 	"\n"
-	" The above four commands may optionally be preceeded by these options:\n"
+	" The above four commands may optionally be preceded by these options:\n"
 	" --security-mode  LEVEL      Use LEVEL to select security level:\n"
 	"                                  h   high security (default).\n"
 	"                                  m   maximum security.\n"
@@ -1841,6 +1856,17 @@ void process_dev (char *devname)
 		if (!wcache)
 			err = flush_wcache(fd);
 	}
+	if (set_standby) {
+		__u8 args[4] = {ATA_OP_SETIDLE,standby,0,0};
+		if (get_standby) {
+			printf(" setting standby to %u", standby);
+			interpret_standby();
+		}
+		if (do_drive_cmd(fd, args, 0)) {
+			err = errno;
+			perror(" HDIO_DRIVE_CMD(setidle) failed");
+		}
+	}
 	if (set_standbynow) {
 		__u8 args1[4] = {ATA_OP_STANDBYNOW1,0,0,0};
 		__u8 args2[4] = {ATA_OP_STANDBYNOW2,0,0,0};
@@ -1915,17 +1941,6 @@ void process_dev (char *devname)
 		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(seagatepwrsave) failed");
-		}
-	}
-	if (set_standby) {
-		__u8 args[4] = {ATA_OP_SETIDLE,standby,0,0};
-		if (get_standby) {
-			printf(" setting standby to %u", standby);
-			interpret_standby();
-		}
-		if (do_drive_cmd(fd, args, 0)) {
-			err = errno;
-			perror(" HDIO_DRIVE_CMD(setidle) failed");
 		}
 	}
 	if (set_busstate) {

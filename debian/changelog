@@ -1,3 +1,16 @@
+hdparm (9.42-1) unstable; urgency=low
+
+  * New upstream release
+  * Allow udev rule to process large numbers of devices (closes: #675624)
+  * Changed hdparm-functions to allow links instead of devices in hdparm.conf.
+  * Taken from Ubuntu:
+    Set spindown policy back to -B128 instead of -B127. Too many drives
+    misbehave too badly with this setting, possibly leading to drive failure.
+    We should revisit this once we understand why people's drives are spinning
+    back *up* so frequently (closes: #684241)
+
+ -- Michael Meskes <meskes@debian.org>  Tue, 09 Oct 2012 11:19:21 +0200
+
 hdparm (9.39-1) unstable; urgency=low
 
   * New upstream version (closes: #602522, #631614, #639660)
