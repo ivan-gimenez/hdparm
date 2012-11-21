@@ -1,3 +1,9 @@
+hdparm (9.43-1) unstable; urgency=low
+
+  * New upstream version
+
+ -- Michael Meskes <meskes@debian.org>  Wed, 21 Nov 2012 11:34:15 +0100
+
 hdparm (9.42-1) unstable; urgency=low
 
   * New upstream release
