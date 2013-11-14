@@ -1,3 +1,11 @@
+hdparm (9.43-1.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Set DEB_MAKE_ENVVARS differently in order to take advantage of
+    cross-building support in cdbs (closes: #694843).
+
+ -- Colin Watson <cjwatson@debian.org>  Thu, 14 Nov 2013 12:15:41 +0000
+
 hdparm (9.43-1) unstable; urgency=low
 
   * New upstream version
