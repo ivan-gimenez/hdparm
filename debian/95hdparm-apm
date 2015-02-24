@@ -33,6 +33,7 @@ fi
 resume_hdparm_apm()
 {
 	for dev in /dev/sd? /dev/hd? ; do
+		apm_opt=
 		if [ -b $dev ] && hdparm_try_apm $dev ; then
 			# Check for APM support; discard errors since not all
 			# drives support HDIO_GET_IDENTITY (-i).
@@ -58,6 +59,7 @@ resume_hdparm_apm()
 resume_hdparm_spindown()
 {
 	for dev in /dev/sd? /dev/hd? ; do
+		apm_opt=
 		if [ -b $dev ] && hdparm_try_apm $dev ; then
 			# Check for APM support; discard errors since not all
 			# drives support HDIO_GET_IDENTITY (-i).

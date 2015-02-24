@@ -1,3 +1,13 @@
+hdparm (9.43-2) unstable; urgency=medium
+
+  * Synced from Ubuntu: (Closes: #725284)
+    - reset apm options between devices
+    - add script that gets run from udev when a new device is added
+  * Added locking to prevent race in RAID setup.
+    Thanks to Simon Elsbrock <simon@iodev.org> (Closes: #717190)
+
+ -- Michael Meskes <meskes@debian.org>  Tue, 24 Feb 2015 11:59:58 +0100
+
 hdparm (9.43-1.1) unstable; urgency=low
 
   * Non-maintainer upload.

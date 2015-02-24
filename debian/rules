@@ -31,6 +31,10 @@ DEB_MAKE_INSTALL_TARGET := install DESTDIR=$(CURDIR)/debian/tmp
 
 common-install-prehook-arch::
 	install -d $(CURDIR)/debian/tmp/sbin
+common-binary-post-install-arch::
+	install -m 755 $(CURDIR)/debian/hdparm.udev-script $(CURDIR)/debian/hdparm/lib/udev/hdparm
+	dh_link -phdparm /usr/lib/pm-utils/power.d/95hdparm-apm /usr/lib/pm-utils/sleep.d/95hdparm-apm
+
 binary-predeb/hdparm::
 	chmod 755 $(CURDIR)/debian/hdparm/etc/apm/event.d/20hdparm
 	chmod 755 $(CURDIR)/debian/hdparm/usr/lib/pm-utils/power.d/95hdparm-apm
