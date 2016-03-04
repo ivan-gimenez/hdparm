@@ -103,6 +103,7 @@
 #define SCT_SUPP		206 /* SMART command transport (SCT) support */
 #define TRANSPORT_MAJOR		222 /* PATA vs. SATA etc.. */
 #define TRANSPORT_MINOR		223 /* minor revision number */
+#define NMRR			217 /* nominal media rotation rate */
 #define INTEGRITY		255 /* integrity word */
 
 /* bit definitions within the words */
@@ -121,8 +122,6 @@
 #define MEDIA_REMOVABLE		0x0080
 #define DRIVE_NOT_REMOVABLE	0x0040  /* bit obsoleted in ATA 6 */
 #define INCOMPLETE		0x0004
-#define CFA_SUPPORT_VAL1	0x848a	/* 848a=CFA feature set support */
-#define CFA_SUPPORT_VAL2	0x844a	/* 844a=also means CFA feature set support */
 #define DRQ_RESPONSE_TIME	0x0060
 #define DRQ_3MS_VAL		0x0000
 #define DRQ_INTR_VAL		0x0020
@@ -408,8 +407,8 @@ static const char *cap_sata0_str[16] = {
 	"unknown 76[15]",				/* word 76 bit 15 */
 	"unknown 76[14]",				/* word 76 bit 14 */
 	"unknown 76[13]",				/* word 76 bit 13 */
-	"unknown 76[12]",				/* word 76 bit 12 */
-	"unknown 76[11]",				/* word 76 bit 11 */
+	"NCQ priority information",			/* word 76 bit 12 */
+	"Idle-Unload when NCQ is active",		/* word 76 bit 11 */
 	"Phy event counters",				/* word 76 bit 10 */
 	"Host-initiated interface power management",	/* word 76 bit  9 */
 	"Native Command Queueing (NCQ)",		/* word 76 bit  8 */
@@ -418,8 +417,8 @@ static const char *cap_sata0_str[16] = {
 	"unknown 76[5]",				/* word 76 bit  5 */
 	"unknown 76[4]",				/* word 76 bit  4 */
 	"unknown 76[3]",				/* word 76 bit  3 */
-	"SATA-II signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
-	"SATA-I signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
+	"Gen2 signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
+	"Gen1 signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
 	"unknown 76[0]"					/* word 76 bit  0 */
 };
 static const char *feat_sata0_str[16] = {
@@ -563,15 +562,19 @@ static int print_transport_type(__u16 val[])
 			break;
 		case 1:
 			printf("Serial");
-			if (subtype & 0xf) {
-				if (subtype & 1)
+			if (subtype & 0x2f) {
+				if (subtype & (1<<0))
 					printf(", ATA8-AST");
-				if (subtype & 2)
+				if (subtype & (1<<1))
 					printf(", SATA 1.0a");
-				if (subtype & 4)
+				if (subtype & (1<<2))
 					printf(", SATA II Extensions");
-				if (subtype & 8)
+				if (subtype & (1<<3))
 					printf(", SATA Rev 2.5");
+				if (subtype & (1<<4))
+					printf(", SATA Rev 2.6");
+				if (subtype & (1<<5))
+					printf(", SATA Rev 3.0");
 			}
 			break;
 		default:
@@ -592,10 +595,20 @@ static int print_transport_type(__u16 val[])
 	return transport;
 }
 
+static int is_cfa_dev (__u16 *id)
+{
+	/*
+	 * id[0] == 0x848a means "CFA compliant, not ATA-4 compliant".
+	 * id[0] == 0x044a is also allowed, but ISTR that some HDs use it too.
+	 * Also, bit 0x0004 of id[83] means "supports CFA feature set".
+	 */
+	return id[0] == 0x848a || id[0] == 0x844a || (id[83] & 0xc004) == 0x4004;
+}
+
 /* our main() routine: */
 void identify (__u16 *id_supplied)
 {
-
+	unsigned int sector_bytes = 512;
 	__u16 val[256], ii, jj, kk;
 	__u16 like_std = 1, std = 0, min_std = 0xffff;
 	__u16 dev = NO_DEV, eqpt = NO_DEV;
@@ -615,14 +628,15 @@ void identify (__u16 *id_supplied)
 	/* check if we recognise the device type */
 	printf("\n");
 
-	if(!(val[GEN_CONFIG] & NOT_ATA)) {
-		dev = ATA_DEV;
-		printf("ATA device, with ");
-	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL1 || val[GEN_CONFIG]==CFA_SUPPORT_VAL2) {
+	//if(val[GEN_CONFIG] == 0x848a || val[GEN_CONFIG] == 0x844a) {
+	if (is_cfa_dev(val)) {
 		is_cfa = 1;
 		dev = ATA_DEV;
 		like_std = 4;
 		printf("CompactFlash ATA device\n");
+	} else if(!(val[GEN_CONFIG] & NOT_ATA)) {
+		dev = ATA_DEV;
+		printf("ATA device, with ");
 	} else if(!(val[GEN_CONFIG] & NOT_ATAPI)) {
 		dev = ATAPI_DEV;
 		eqpt = (val[GEN_CONFIG] & EQPT_TYPE) >> SHIFT_EQPT;
@@ -868,15 +882,74 @@ void identify (__u16 *id_supplied)
 				printf("\tLBA48  user addressable sectors:%11llu\n", (unsigned long long)bbbig);
 			}
 		}
+		if((val[106] & 0xc000) != 0x4000) {
+			printf("\t%-31s %11u bytes\n","Logical/Physical Sector size:", sector_bytes);
+		} else {
+			unsigned int lsize = 256, pfactor = 1;
+			if (val[106] & (1<<13))
+				pfactor = (1 << (val[106] & 0xf));
+			if (val[106] & (1<<12))
+				lsize = (val[118] << 16) | val[117];
+			sector_bytes = 2 * lsize;
+			printf("\t%-31s %11u bytes\n","Logical  Sector size:", sector_bytes);
+			printf("\t%-31s %11u bytes\n","Physical Sector size:", sector_bytes * pfactor);
+			if ((val[209] & 0xc000) == 0x4000) {
+				unsigned int offset = val[209] & 0x1fff;
+				printf("\t%-31s %11u bytes\n", "Logical Sector-0 offset:", offset * lsize);
+			}
+		}
 		if (!bbbig) bbbig = (__u64)(ll>mm ? ll : mm); /* # 512 byte blocks */
 		if (!bbbig) bbbig = bb;
+		bbbig *= (sector_bytes / 512);
 		printf("\tdevice size with M = 1024*1024: %11llu MBytes\n", (unsigned long long)(bbbig>>11));
 		bbbig = (bbbig<<9)/1000000;
 		printf("\tdevice size with M = 1000*1000: %11llu MBytes ", (unsigned long long)bbbig);
 		if(bbbig > 1000) printf("(%llu GB)\n", (unsigned long long)(bbbig/1000));
 		else printf("\n");
-
 	}
+
+	/* device cache/buffer size, if reported (obsolete field, but usually valid regardless) */
+	printf("\tcache/buffer size  = ");
+	if (val[20] <= 3 && val[21] && val[21] != 0xffff) {
+		printf("%u KBytes", val[21] / 2);
+		if (val[20])
+			printf(" (type=%s)", BuffType[val[20]]);
+	} else {
+		printf("unknown");
+	}
+	putchar('\n');
+
+	/* Form factor */
+	if(val[168] && (val[168] & 0xfff8) == 0) {
+		printf("\tForm Factor: ");
+		switch(val[168]) {
+		case 1:
+			printf("5.25 inch");
+			break;
+		case 2:
+			printf("3.5 inch");
+			break;
+		case 3:
+			printf("2.5 inch");
+			break;
+		case 4:
+			printf("1.8 inch");
+			break;
+		case 5:
+			printf("less than 1.8 inch");
+			break;
+		default:
+			printf("unknown (0x%04x]", val[168]);
+			break;
+		}
+		printf("\n");
+	}
+
+	/* Spinning disk or solid state? */
+	if(val[NMRR] == 1)
+		printf("\tNominal Media Rotation Rate: Solid State Device\n");
+	else if(val[NMRR] > 0x401)
+		printf("\tNominal Media Rotation Rate: %u\n", val[NMRR]);
 
 	/* hw support of commands (capabilities) */
 	printf("Capabilities:\n");
@@ -955,7 +1028,7 @@ void identify (__u16 *id_supplied)
 				printf("%u\n",val[SECTOR_XFER_CUR] & SECTOR_XFER);
 			else	printf("?\n");
 		}
-		if((like_std > 3) && (val[CMDS_SUPP_1] & 0x0008)) {
+		if((like_std > 3) && (val[CMDS_SUPP_1] & 0xc008) == 0x4008) {
 			printf("\tAdvanced power management level: ");
 			if (val[CMDS_EN_1] & 0x0008)
 				printf("%u\n", val[ADV_PWR] & 0xff);
@@ -1122,10 +1195,10 @@ void identify (__u16 *id_supplied)
 	}
 	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) 
     {
-		printf("Logical Unit WWN Device Identifier: %x%x%x%x\n", val[108], val[109], val[110], val[111]);
+		printf("Logical Unit WWN Device Identifier: %04x%04x%04x%04x\n", val[108], val[109], val[110], val[111]);
 		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
-		printf("\tIEEE OUI\t: %x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
-		printf("\tUnique ID\t: %x%x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
+		printf("\tIEEE OUI\t: %06x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
+		printf("\tUnique ID\t: %x%08x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
     }
 
 	/* reset result */
@@ -1169,7 +1242,7 @@ void identify (__u16 *id_supplied)
 			for (mode = 1; mode <= max; ++mode) {
 				if (mode == selected)
 					strcat(modes, "*");
-				sprintf(modes + strlen(modes), "mdma%u ", mode + 4);
+				sprintf(modes + strlen(modes), "mdma%u ", mode + 2);
 			}
 		}
 		if (val[164] & 0x8000)
@@ -1207,6 +1280,7 @@ void identify (__u16 *id_supplied)
 			printf("\t   *\tCFA advanced modes: %s\n", modes);
 
 		if(val[CFA_PWR_MODE] & VALID_W160) {
+			putchar('\t');
 			if((val[CFA_PWR_MODE] & PWR_MODE_REQ) == 0)
 				printf("   *");
 			printf("\tCFA Power Level 1 ");
@@ -1278,4 +1352,86 @@ void print_ascii(__u16 *p, __u8 length) {
 		p++;
 	}
 	printf("\n");
+}
+
+void dco_identify_print (__u16 *dco)
+{
+	__u64 lba;
+
+	printf("DCO Revision: 0x%04x", dco[0]);
+	if (dco[0] == 0 || dco[0] > 2)
+		printf(" -- unknown, treating as 0002");
+	printf("\nThe following features can be selectively disabled via DCO:\n");
+
+	printf("\tTransfer modes:\n\t\t");
+	if (dco[1] & 0x0007) {
+		     if (dco[1] & (1<<2)) printf(" mdma0 mdma1 mdma2");
+		else if (dco[1] & (1<<1)) printf(" mdma0 mdma1");
+		else if (dco[1] & (1<<0)) printf(" mdma0");
+		printf("\n\t\t");
+	}
+	if (dco[2] & (1<<6)) {
+		printf(" udma0 udma1 udma2 udma3 udma4 udma5 udma6");
+		if (dco[0] < 2)
+			printf("(?)");
+	}
+	else if (dco[2] & (1<<5)) printf(" udma0 udma1 udma2 udma3 udma4 udma5");
+	else if (dco[2] & (1<<4)) printf(" udma0 udma1 udma2 udma3 udma4");
+	else if (dco[2] & (1<<3)) printf(" udma0 udma1 udma2 udma3");
+	else if (dco[2] & (1<<2)) printf(" udma0 udma1 udma2");
+	else if (dco[2] & (1<<1)) printf(" udma0 udma1");
+	else if (dco[2] & (1<<0)) printf(" udma0");
+	putchar('\n');
+
+	lba = ((((__u64)dco[5]) << 32) | (dco[4] << 16) | dco[3]) + 1;
+	printf("\tReal max sectors: %llu\n", lba);
+
+	printf("\tATA command/feature sets:");
+	if (dco[7] & 0x01ff) {
+		printf("\n\t\t");
+		if (dco[7] & (1<< 0)) printf(" SMART");
+		if (dco[7] & (1<< 1)) printf(" self_test");
+		if (dco[7] & (1<< 2)) printf(" error_log");
+		if (dco[7] & (1<< 3)) printf(" security");
+		if (dco[7] & (1<< 4)) printf(" PUIS");
+		if (dco[7] & (1<< 5)) printf(" TCQ");
+		if (dco[7] & (1<< 6)) printf(" AAM");
+		if (dco[7] & (1<< 7)) printf(" HPA");
+		if (dco[7] & (1<< 8)) printf(" 48_bit");
+	}
+	if (dco[7] & 0xfe00) {
+		printf("\n\t\t");
+		if (dco[0] < 2)
+			printf(" (?):");
+		if (dco[7] & (1<< 9)) printf(" streaming");
+		if (dco[7] & (1<<10)) printf(" TLC_Reserved_7[10]");
+		if (dco[7] & (1<<11)) printf(" FUA");
+		if (dco[7] & (1<<12)) printf(" selective_test");
+		if (dco[7] & (1<<13)) printf(" conveyance_test");
+		if (dco[7] & (1<<14)) printf(" write_read_verify");
+		if (dco[7] & (1<<15)) printf(" reserved_7[15]");
+	}
+	if (dco[21] & 0xf800) {
+		printf("\n\t\t");
+		if (dco[0] < 2)
+			printf(" (?):");
+		if (dco[21] & (1<<11)) printf(" free_fall");
+		if (dco[21] & (1<<12)) printf(" trusted_computing");
+		if (dco[21] & (1<<13)) printf(" WRITE_UNC_EXT");
+		if (dco[21] & (1<<14)) printf(" NV_cache_power_management");
+		if (dco[21] & (1<<15)) printf(" NV_cache");
+	}
+	putchar('\n');
+
+	if (dco[8] && 0x1f) {
+		printf("\tSATA command/feature sets:\n\t\t");
+		if (dco[0] < 2)
+			printf(" (?):");
+		if (dco[8] & (1<<0)) printf(" NCQ");
+		if (dco[8] & (1<<1)) printf(" NZ_buffer_offsets");
+		if (dco[8] & (1<<2)) printf(" interface_power_management");
+		if (dco[8] & (1<<3)) printf(" async_notification");
+		if (dco[8] & (1<<4)) printf(" SSP");
+		putchar('\n');
+	}
 }
