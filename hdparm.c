@@ -2,6 +2,8 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2012 -- freely distributable.
  */
+#define HDPARM_VERSION "v9.48"
+
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
@@ -37,8 +39,6 @@ static char  *argp;
 static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
-
-#define VERSION "v9.43"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -91,7 +91,7 @@ static int security_freeze   = 0;
 static int security_master = 0, security_mode = 0;
 static int enhanced_erase = 0;
 static int set_security   = 0;
-static int do_dco_freeze = 0, do_dco_restore = 0, do_dco_identify = 0;
+static int do_dco_freeze = 0, do_dco_restore = 0, do_dco_identify = 0, do_dco_setmax = 0;
 static unsigned int security_command = ATA_OP_SECURITY_UNLOCK;
 
 static char security_password[33], *fwpath;
@@ -173,6 +173,28 @@ static void on_off (unsigned int value)
 #define ENOIOCTLCMD ENOTTY
 #endif
 
+#define DCO_CHECKSUM_WORDS	154
+// the DCO spec says that the checksum is the 2's compelement of the sum of all bytes in words 0-154 + byte 511. 
+static __u8 dco_verify_checksum(__u16 *dcobuffer)
+{
+	__u8 csum = 0;
+	int i;
+
+	for(i = 0; i < DCO_CHECKSUM_WORDS; i++) {
+		csum += (dcobuffer[i] & 0xFF);
+		csum += (dcobuffer[i] >> 8);
+	}
+	// The INTEL drives have a byte OUTSIDE of the valid checksum area,
+	//  and they erroneously include it in the checksum! WARNING: KLUDGE!
+	if (dcobuffer[208] != 0) {
+		csum += (dcobuffer[208] & 0xFF);
+		csum += (dcobuffer[208] >> 8);
+	}
+	// get the signature byte
+	csum += (dcobuffer[255] & 0xFF);
+	return (0-csum);
+}
+
 static void flush_buffer_cache (int fd)
 {
 	sync();
@@ -207,7 +229,7 @@ static int read_big_block (int fd, char *buf)
 		} else {
 			fputs ("read() hit EOF - device too small\n", stderr);
 		}
-		return 1;
+		return EIO;
 	}
 	/* access all sectors of buf to ensure the read fully completed */
 	for (i = 0; i < TIMING_BUF_BYTES; i += 512)
@@ -356,7 +378,7 @@ static int time_device (int fd)
 	getitimer(ITIMER_REAL, &e1);
 	do {
 		++iterations;
-		if (read_big_block (fd, buf))
+		if ((err = read_big_block(fd, buf)))
 			goto quit;
 		getitimer(ITIMER_REAL, &e2);
 		elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
@@ -708,6 +730,9 @@ static unsigned int get_erase_timeout_secs (int fd, int enhanced)
 
 	get_identify_data(fd);
 	if (id) {
+		__u64 lba_limit = get_lba_capacity(id);
+		__u64 estimate = (lba_limit / 2048ULL) / 30ULL / 60;
+		estimate += 30;	/* fudge factor.. add another 30 minutes */
 		timeout = id[idx];
 		if (timeout && timeout <= 0xff) {
 			/*
@@ -715,19 +740,16 @@ static unsigned int get_erase_timeout_secs (int fd, int enhanced)
 			 * but we really want a better idea than that.
 			 * Norman Diamond suggests allowing 1sec per 30MB of capacity.
 			 */
-			if (timeout == 0xff) {
-				__u64 lba_limit = get_lba_capacity(id);
-				__u64 estimate = (lba_limit / 2048ULL) / 30ULL / 60;
-				timeout = 508 + 60;  /* spec says > 508 minutes */
-				if (timeout < estimate)
-					timeout = estimate;
-			} else {
-				timeout = (timeout * 2) + 30;  /* Add on a 30min margin */
-			}
+			if (timeout == 0xff)
+				timeout = 508 + 90;  /* spec says > 508 minutes */
+			else
+				timeout = (timeout * 2) + 60;  /* Add on a 60min margin */
 		}
+		if (timeout < estimate)
+			timeout = estimate;
 	}
 	if (!timeout)
-		timeout = 2 * 60;  /* default: two hours */
+		timeout = 12 * 60;  /* default: twelve hours */
 	timeout *= 60; /* convert minutes to seconds */
 	return timeout;
 }
@@ -752,14 +774,14 @@ do_set_security (int fd)
 	r->dphase	= TASKFILE_DPHASE_PIO_OUT;
 	r->obytes	= 512;
 	r->lob.command	= security_command;
-	r->oflags.lob.nsect = 1;
+	r->oflags.bits.lob.nsect = 1;
 	r->lob.nsect        = 1;
 	data		= (__u8*)r->data;
 	data[0]		= security_master & 0x01;
 	memcpy(data+2, security_password, 32);
 
-	r->oflags.lob.command = 1;
-	r->oflags.lob.feat    = 1;
+	r->oflags.bits.lob.command = 1;
+	r->oflags.bits.lob.feat    = 1;
 
 	switch (security_command) {
 		case ATA_OP_SECURITY_ERASE_UNIT:
@@ -883,8 +905,32 @@ static void get_identify_data (int fd)
 	}
 	/* byte-swap the little-endian IDENTIFY data to match byte-order on host CPU */
 	id = (void *)(args + 4);
-	for (i = 0; i < 0x100; ++i)
-		__le16_to_cpus(&id[i]);
+	for (i = 0; i < 0x100; ++i) {
+		unsigned char *b = (unsigned char *)&id[i];
+		id[i] = b[0] | (b[1] << 8);	/* le16_to_cpu() */
+	}
+}
+
+int get_id_log_page_data (int fd, __u8 pagenr, __u8 *buf)
+{
+	struct hdio_taskfile *r;
+	int err = 0;
+
+	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	if (!r) {
+		err = errno;
+		perror("malloc()");
+		return err;
+	}
+
+	init_hdio_taskfile(r, ATA_OP_READ_LOG_EXT, RW_READ, LBA48_FORCE, 0x30 + (pagenr << 8), 1, 512);
+	if (do_taskfile_cmd(fd, r, timeout_15secs)) {
+		err = errno;
+	} else {
+		memcpy(buf, r->data, 512);
+	}
+	free(r);
+	return err;
 }
 
 static void confirm_i_know_what_i_am_doing (const char *opt, const char *explanation)
@@ -934,8 +980,8 @@ static void dump_sectors (__u16 *w, unsigned int count)
 #else
 		int word;
 		for (word = 0; word < 8; ++word) {
-			printf("%04x", le16toh(w[0]));
-			++w;
+			unsigned char *b = (unsigned char *)w++;
+			printf("%02x%02x", b[0], b[1]);
 			putchar(word == 7 ? '\n' : ' ');
 		}
 #endif
@@ -991,12 +1037,77 @@ static __u16 *get_dco_identify_data (int fd, int quietly)
 		return NULL;
 	} else {
 		/* byte-swap the little-endian DCO data to match byte-order on host CPU */
-		for (i = 0; i < 0x100; ++i)
-			__le16_to_cpus(&dco[i]);
+		for (i = 0; i < 0x100; ++i) {
+			unsigned char *b = (unsigned char *)&dco[i];
+			dco[i] = b[0] | (b[1] << 8);	/* le16_to_cpu */
+		}
 		//dump_sectors(dco, 1);
 		return dco;
 	}
 }
+
+static void
+do_dco_setmax_cmd (int fd)
+{
+	int err = 0;
+	struct hdio_taskfile *r;
+	__u8 *data;
+	__u16 *dco = (__u16 *) NULL;
+
+	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	if (!r) {
+		err = errno;
+		perror("malloc()");
+		exit(err);
+	}
+
+	// first, get the dco data
+	dco = get_dco_identify_data(fd, 0);
+	if (dco != ((__u16 *) NULL)) {
+		__u64 *maxlba = (__u64 *) &dco[3];
+
+		// first, check DCO checksum
+		if (dco_verify_checksum(dco) != (dco[255] >> 8)) {
+			printf("DCO Checksum FAILED!\n");
+			exit(1);
+		}
+		if (verbose) {
+			printf("Original DCO:\n");
+			dump_sectors(dco, 1);
+		}
+		// set the new MAXLBA to the requested sectors - 1
+		*maxlba = set_max_addr - 1;
+		// recalculate the checksum
+		dco[255] = (dco[255] & 0xFF) | ((__u16) dco_verify_checksum(dco) << 8);
+		if (verbose) {
+			printf("New DCO:\n");
+			dump_sectors(dco, 1);
+		}
+
+	} else {
+		printf("DCO data is NULL!\n");
+		exit(1);
+	}
+	memset(r, 0, sizeof(struct hdio_taskfile) + 512);
+	r->cmd_req	= TASKFILE_CMD_REQ_OUT;
+	r->dphase	= TASKFILE_DPHASE_PIO_OUT;
+	r->obytes	= 512;
+	r->lob.command	= ATA_OP_DCO;
+	r->oflags.bits.lob.command = 1;
+	r->lob.feat        = 0xc3;
+	r->oflags.bits.lob.feat = 1;
+	data		= (__u8*)r->data;
+	// copy data from new dco to output buffer
+	memcpy(data, (__u8*) dco, 512);
+	if ((do_taskfile_cmd(fd, r, timeout_15secs))) {
+		err = errno;
+		perror("DEVICE CONFIGURATION SET");
+	} 
+	free(r);
+	if (err)
+		exit(err);
+}
+
 
 static __u64 do_get_native_max_sectors (int fd)
 {
@@ -1010,18 +1121,18 @@ static __u64 do_get_native_max_sectors (int fd)
 	memset(&r, 0, sizeof(r));
 	r.cmd_req = TASKFILE_CMD_REQ_NODATA;
 	r.dphase  = TASKFILE_DPHASE_NONE;
-	r.oflags.lob.dev      = 1;
-	r.oflags.lob.command  = 1;
-	r.iflags.lob.command  = 1;
-	r.iflags.lob.lbal     = 1;
-	r.iflags.lob.lbam     = 1;
-	r.iflags.lob.lbah     = 1;
+	r.oflags.bits.lob.dev      = 1;
+	r.oflags.bits.lob.command  = 1;
+	r.iflags.bits.lob.command  = 1;
+	r.iflags.bits.lob.lbal     = 1;
+	r.iflags.bits.lob.lbam     = 1;
+	r.iflags.bits.lob.lbah     = 1;
 	r.lob.dev = 0x40;
 
 	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
-		r.iflags.hob.lbal  = 1;
-		r.iflags.hob.lbam  = 1;
-		r.iflags.hob.lbah  = 1;
+		r.iflags.bits.hob.lbal  = 1;
+		r.iflags.bits.hob.lbam  = 1;
+		r.iflags.bits.hob.lbah  = 1;
 		r.lob.command = ATA_OP_READ_NATIVE_MAX_EXT;
 		if (do_taskfile_cmd(fd, &r, 10)) {
 			err = errno;
@@ -1034,7 +1145,7 @@ static __u64 do_get_native_max_sectors (int fd)
 				     | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
 		}
 	} else {
-		r.iflags.lob.dev = 1;
+		r.iflags.bits.lob.dev = 1;
 		r.lob.command = ATA_OP_READ_NATIVE_MAX;
 		if (do_taskfile_cmd(fd, &r, 0)) {
 			err = errno;
@@ -1072,7 +1183,7 @@ static int do_make_bad_sector (int fd, __u64 lba, const char *devname)
 				"This operation will probably fail (continuing regardless).\n");
 		}
 		init_hdio_taskfile(r, ATA_OP_WRITE_UNC_EXT, RW_READ, LBA48_FORCE, lba, 1, 0);
-		r->oflags.lob.feat = 1;
+		r->oflags.bits.lob.feat = 1;
 		r->lob.feat = make_bad_sector_flagged ? 0xaa : 0x55;
 		flagged     = make_bad_sector_flagged ? "flagged" : "pseudo";
 		printf("Corrupting sector %llu (WRITE_UNC_EXT as %s): ", lba, flagged);
@@ -1225,16 +1336,11 @@ static void
 extract_id_string (__u16 *idw, int words, char *dst)
 {
 	char *e;
-	int i, max = words * 2;
+	int bytes = words * 2;
 
-	for (i = 0; i < words; ++i) {
-		__u16 w = idw[i];
-		w = __be16_to_cpu(w);
-		dst[i*2  ] = w >> 8;
-		dst[i*2+1] = w;
-	}
-	dst[max] = '\0';
-	for (e = dst + max; --e != dst;) {
+	memcpy(dst, idw, bytes);
+	dst[bytes] = '\0';
+	for (e = dst + bytes; --e != dst;) {
 		if (*e && *e != ' ')
 			break;
 		*e = '\0';
@@ -1392,7 +1498,7 @@ static int do_idleunload (int fd, const char *devname)
 
 	abort_if_not_full_device(fd, 0, devname, NULL);
 	init_hdio_taskfile(&r, ATA_OP_IDLEIMMEDIATE, RW_READ, LBA28_OK, 0x0554e4c, 0, 0);
-	r.oflags.lob.feat = 1;
+	r.oflags.bits.lob.feat = 1;
 	r.lob.feat = 0x44;
 
 	if (do_taskfile_cmd(fd, &r, 0)) {
@@ -1415,7 +1521,7 @@ static int do_set_max_sectors (int fd, __u64 max_lba, int permanent)
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX, RW_READ, LBA28_OK, max_lba, nsect, 0);
-		r.oflags.lob.feat = 1;  /* this ATA op requires feat==0 */
+		r.oflags.bits.lob.feat = 1;  /* this ATA op requires feat==0 */
 	}
 
 	/* spec requires that we do this immediately in front.. racey */
@@ -1434,7 +1540,7 @@ static void usage_help (int clue, int rc)
 {
 	FILE *desc = rc ? stderr : stdout;
 
-	fprintf(desc,"\n%s - get/set hard disk parameters - version " VERSION ", by Mark Lord.\n\n", progname);
+	fprintf(desc,"\n%s - get/set hard disk parameters - version " HDPARM_VERSION ", by Mark Lord.\n\n", progname);
 	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);
 	fprintf(desc,"Usage:  %s  [options] [device ...]\n\n", progname);
 	fprintf(desc,"Options:\n"
@@ -1487,6 +1593,7 @@ static void usage_help (int clue, int rc)
 	" --dco-freeze      Freeze/lock current device configuration until next power cycle\n"
 	" --dco-identify    Read/dump device configuration identify data\n"
 	" --dco-restore     Reset device configuration back to factory defaults\n"
+	" --dco-setmax      Use DCO to set maximum addressable sectors\n"
 	" --direct          Use O_DIRECT to bypass page cache for timings\n"
 	" --drq-hsm-error   Crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
 	" --fallocate       Create a file without writing data to disk\n"
@@ -1495,6 +1602,8 @@ static void usage_help (int clue, int rc)
 	" --fwdownload-mode3      Download firmware using min-size segments (EXTREMELY DANGEROUS)\n"
 	" --fwdownload-mode3-max  Download firmware using max-size segments (EXTREMELY DANGEROUS)\n"
 	" --fwdownload-mode7      Download firmware using a single segment (EXTREMELY DANGEROUS)\n"
+	" --fwdownload-modee      Download firmware using mode E (min-size segments) (EXTREMELY DANGEROUS)\n"
+	" --fwdownload-modee-max  Download firmware using mode E (max-size segments) (EXTREMELY DANGEROUS)\n"
 	" --idle-immediate  Idle drive immediately\n"
 	" --idle-unload     Idle immediately and unload heads\n"
 	" --Istdin          Read identify data from stdin as ASCII hex\n"
@@ -1503,6 +1612,7 @@ static void usage_help (int clue, int rc)
 	" --offset          use with -t, to begin timings at given offset (in GiB) from start of drive\n"
 	" --prefer-ata12    Use 12-byte (instead of 16-byte) SAT commands when possible\n"
 	" --read-sector     Read and dump (in hex) a sector directly from the media\n"
+	" --repair-sector   Alias for the --write-sector option (VERY DANGEROUS)\n"
 	" --security-help   Display help for ATA security commands\n"
 	" --trim-sector-ranges        Tell SSD firmware to discard unneeded data sectors: lba:count ..\n"
 	" --trim-sector-ranges-stdin  Same as above, but reads lba:count pairs from stdin\n"
@@ -1872,8 +1982,13 @@ void process_dev (char *devname)
 	}
 	if (do_dco_identify) {
 		__u16 *dco = get_dco_identify_data(fd, 0);
-		if (dco)
+		if (dco) {
+			if (dco_verify_checksum(dco) == (dco[255] >> 8))
+				printf("DCO Checksum verified.\n");
+			else
+				printf("DCO Checksum FAILED!\n");
 			dco_identify_print(dco);
+		}
 	}
 	if (do_dco_restore) {
 		__u8 args[4] = {ATA_OP_DCO,0,0xc0,0};
@@ -1890,6 +2005,20 @@ void process_dev (char *devname)
 		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(dco_freeze) failed");
+		}
+	}
+	if (do_dco_setmax) {
+		get_identify_data(fd);
+		if (id) {
+			if (set_max_addr < get_lba_capacity(id))
+				confirm_i_know_what_i_am_doing("--dco-setmax", "You have requested reducing the apparent size of the drive.\nThis is a BAD idea, and can easily destroy all of the drive's contents.");
+
+			// set max sectors with DCO set command
+			printf("issuing DCO set command (sectors = %llu)\n", set_max_addr);
+			do_dco_setmax_cmd(fd);
+
+			// invalidate current IDENTIFY data
+			id = NULL; 
 		}
 	}
 	if (security_freeze) {
@@ -2174,7 +2303,7 @@ void process_dev (char *devname)
 			if (do_IDentity == 2)
 				dump_sectors(id, 1);
 			else
-				identify((void *)id);
+				identify(fd, (void *)id);
 		}
 	}
 	if (get_lookahead) {
@@ -2400,7 +2529,7 @@ identify_from_stdin (void)
 		}
 	} while (wc < 256);
 	putchar('\n');
-	identify(sbuf);
+	identify(-1, sbuf);
 	return;
 eof:
 	err = errno;
@@ -2440,24 +2569,45 @@ numeric_parm (char c, const char *name, int *val, int *setparm, int *getparm, in
 static void get_security_password (int handle_NULL)
 {
 	unsigned int maxlen = sizeof(security_password) - 1;
+	unsigned int binary_passwd = 0;
 
-	if (argc < 2) {
-		fprintf(stderr, "missing PASSWD\n");
-		exit(EINVAL);
-	}
 	argp = *argv++, --argc;
-	if (!argp) {
+	if (!argp || argc < 1) {
 		fprintf(stderr, "missing PASSWD\n");
-		exit(EINVAL);
-	}
-	if (strlen(argp) > maxlen) {
-		fprintf(stderr, "PASSWD too long (must be %d chars max)\n", maxlen);
 		exit(EINVAL);
 	}
 	memset(security_password, 0, maxlen + 1);
-	if (!handle_NULL || strcmp(argp, "NULL"))
+	if (0 == strncmp(argp, "hex:", 4)) {
+		argp += 4;
+		if (strlen(argp) != (maxlen * 2)) {
+			fprintf(stderr, "invalid PASSWD length (hex string must be exactly %d chars)\n", maxlen*2);
+			exit(EINVAL);
+		}
+		char *cur = security_password;
+		while (*argp) {
+			int d[2];
+			d[0] = fromhex(*argp++);
+			d[1] = fromhex(*argp++);
+			*(cur++) = d[0] << 4 | d[1];
+		}
+		binary_passwd = 1;
+	} else if (strlen(argp) > maxlen) {
+		fprintf(stderr, "PASSWD too long (must be %d chars max)\n", maxlen);
+		exit(EINVAL);
+	} else if (!handle_NULL || strcmp(argp, "NULL")) {
 		strcpy(security_password, argp);
-	printf("security_password=\"%s\"\n", security_password);
+	}
+	printf("security_password:");
+	if (!binary_passwd) {
+		printf(" \"%s\"\n", security_password);
+	} else {
+		unsigned int i;
+		for (i = 0; i < maxlen; ++i) {
+			unsigned char c = security_password[i];
+			printf(" %02x", c);
+		}
+		putchar('\n');
+	}
 	while (*argp)
 		++argp;
 }
@@ -2512,6 +2662,12 @@ get_set_max_sectors_parms (void)
 }
 
 static void
+get_set_max_sectors_parms_dco (void)
+{
+	do_dco_setmax = get_u64_parm(0, 0, NULL, &set_max_addr, 1, lba_limit, "--dco-setmax", lba_emsg);
+}
+
+static void
 handle_standalone_longarg (char *name)
 {
 	if (num_flags_processed) {
@@ -2531,6 +2687,8 @@ handle_standalone_longarg (char *name)
 	}
 	if (0 == strcasecmp(name, "dco-restore")) {
 		do_dco_restore = 1;
+	} else if (0 == strcasecmp(name, "dco-setmax")) {
+		get_set_max_sectors_parms_dco();
 	} else if (0 == strcasecmp(name, "security-help")) {
 		security_help(0);
 		exit(0);
@@ -2640,10 +2798,18 @@ get_longarg (void)
 		get_filename_parm(&fwpath, name);
 		do_fwdownload = 1;
 		xfer_mode = 3;
+	} else if (0 == strcasecmp(name, "fwdownload-modee")) {
+		get_filename_parm(&fwpath, name);
+		do_fwdownload = 1;
+		xfer_mode = 0xe;
+	} else if (0 == strcasecmp(name, "fwdownload-modee-max")) {
+		get_filename_parm(&fwpath, name);
+		do_fwdownload = 1;
+		xfer_mode = 0xe0;
 	} else if (0 == strcasecmp(name, "fwdownload-mode3-max")) {
 		get_filename_parm(&fwpath, name);
 		do_fwdownload = 1;
-		xfer_mode = 30;
+		xfer_mode = 0x30;
 	} else if (0 == strcasecmp(name, "fwdownload-mode7")) {
 		get_filename_parm(&fwpath, name);
 		do_fwdownload = 1;
@@ -2804,7 +2970,7 @@ int main (int _argc, char **_argv)
 				case      DO_FLAG('T',do_ctimings);
 				case GET_SET_PARM('u',"unmask-irq",unmask,0,1);
 				case      DO_FLAG('v',do_defaults);
-				case              'V': fprintf(stdout, "%s %s\n", progname, VERSION); exit(0);
+				case              'V': fprintf(stdout, "%s %s\n", progname, HDPARM_VERSION); exit(0);
 				case     SET_FLAG('w',doreset);
 				case GET_SET_PARM('W',"write-cache",wcache,0,1);
 				case     SET_FLAG('y',standbynow);

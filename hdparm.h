@@ -1,7 +1,7 @@
 /* Some prototypes for extern functions. */
 
 //#undef __KERNEL_STRICT_NAMES
-#include <linux/types.h>
+#include <sys/types.h>
 
 #if !defined(__GNUC__) && !defined(__attribute__)
 #define __attribute__(x)
@@ -9,7 +9,7 @@
 
 #define lba28_limit ((__u64)(1<<28) - 1)
 
-void identify (__u16 *id_supplied);
+void identify (int fd, __u16 *id_supplied);
 void usage_error(int out) __attribute__((noreturn));
 void no_scsi (void);
 void no_xt (void);
@@ -20,7 +20,7 @@ int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *st
 int get_dev_t_geometry (dev_t dev, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
 int do_filemap(const char *file_name);
 int do_fallocate_syscall (const char *name, __u64 bytecount);
-int fwdownload(int fd, __u16 *id, const char *fwpath, int xfer_mode);
+int fwdownload (int fd, __u16 *id, const char *fwpath, int xfer_mode);
 void dco_identify_print (__u16 *dco);
 int set_dvdspeed(int fd, int speed);
 int fd_is_raid (int fd);
@@ -29,6 +29,8 @@ int  wdidle3_set_timeout (int fd, unsigned char timeout);
 int  wdidle3_get_timeout (int fd, unsigned char *timeout);
 void wdidle3_print_timeout (unsigned char timeout);
 unsigned char wdidle3_msecs_to_timeout (unsigned int msecs);
+
+int get_id_log_page_data (int fd, __u8 pagenr, __u8 *buf);
 
 extern const char *BuffType[4];
 

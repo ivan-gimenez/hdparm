@@ -421,9 +421,9 @@ static const char *feat_3_str[16] = {
 	"Disable Data Transfer After Error Detection"	/* word 119 bit  0 (ref: 2014DT)*/
 };
 static const char *cap_sata0_str[16] = { 
-	"unknown 76[15]",				/* word 76 bit 15 */
-	"unknown 76[14]",				/* word 76 bit 14 */
-	"unknown 76[13]",				/* word 76 bit 13 */
+	"READ_LOG_DMA_EXT equivalent to READ_LOG_EXT",	/* word 76 bit 15 */
+	"Device automatic Partial to Slumber transitions",/* word 76 bit 14 */
+	"Host automatic Partial to Slumber transitions",/* word 76 bit 13 */
 	"NCQ priority information",			/* word 76 bit 12 */
 	"Idle-Unload when NCQ is active",		/* word 76 bit 11 */
 	"Phy event counters",				/* word 76 bit 10 */
@@ -446,7 +446,7 @@ static const char *feat_sata0_str[16] = {
 	"unknown 78[11]",				/* word 78 bit 11 */
 	"unknown 78[10]",				/* word 78 bit 10 */
 	"unknown 78[9]",				/* word 78 bit  9 */
-	"unknown 78[8]",				/* word 78 bit  8 */
+	"Device Sleep (DEVSLP)",			/* word 78 bit  8 */
 	"unknown 78[7]",				/* word 78 bit  7 */
 	"Software settings preservation",		/* word 78 bit  6 */
 	"Asynchronous notification (eg. media change)",	/* word 78 bit  5 */
@@ -648,8 +648,27 @@ static int is_cfa_dev (__u16 *id)
 	return id[0] == 0x848a || id[0] == 0x844a || (id[83] & 0xc004) == 0x4004;
 }
 
+static void print_devslp_info (int fd, __u16 *id)
+{
+	/* Print DEVSLP information */
+	if (id[78] & 0x0100) {
+		__u8 buf[512];
+		int deto = 0;
+		int mdat = 0;
+
+		memset(buf, 0, 512);
+		if (fd != -1 && !get_id_log_page_data(fd, 8, buf) && (buf[0x37] & 0x80)) {
+			mdat = buf[0x30] & 0x1f;
+			deto = buf[0x31];
+			printf("Device Sleep:\n");
+			printf("\tDEVSLP Exit Timeout (DETO): %d ms (%s)\n", deto?deto:20, deto?"drive":"default");
+			printf("\tMinimum DEVSLP Assertion Time (MDAT): %d ms (%s)\n", mdat?mdat:10, deto?"drive":"default");
+		}
+	}
+}
+
 /* our main() routine: */
-void identify (__u16 *id_supplied)
+void identify (int fd, __u16 *id_supplied)
 {
 	unsigned int sector_bytes = 512;
 	__u16 val[256], ii, jj, kk;
@@ -907,7 +926,7 @@ void identify (__u16 *id_supplied)
 				if(like_std < 3) {
 					nn = (__u32)val[CAPACITY_LSB] << 16 | val[CAPACITY_MSB];
 					/* check Endian of capacity bytes */
-					if(abs(mm - bb) > abs(nn - bb))
+					if(llabs((long long)(mm - bb)) > llabs((long long)(nn - bb)))
 						mm = nn;
 				}
 				printf("\tCHS current addressable sectors:%11u\n",mm);
@@ -1307,7 +1326,7 @@ void identify (__u16 *id_supplied)
 		printf("\t\tRemovable Media Status Notification feature set supported\n");
 
 	/* security */
-	if((eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
+	if((val[CMDS_SUPP_2] & 2) && (eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
 	{
 		printf("Security: \n");
 		if(val[PSWD_CODE] && (val[PSWD_CODE] != 0xffff))
@@ -1315,7 +1334,7 @@ void identify (__u16 *id_supplied)
 		jj = val[SECU_STATUS];
 		if(jj) {
 			for (ii = 0; ii < NUM_SECU_STR; ii++) {
-				if(!(jj & 0x0001)) printf("\tnot\t");
+				if(!(jj & 0x0001)) printf("%s", ii ? "\tnot\t" : "\t(?)\t");
 				else		   printf("\t\t");
 				printf("%s\n",secu_str[ii]);
 				jj >>=1;
@@ -1373,6 +1392,7 @@ void identify (__u16 *id_supplied)
 			printf(" determined by CSEL");
 		printf("\n");
 	}
+	print_devslp_info(fd, val);
 
 	/* more stuff from std 5 */
 	if ((like_std > 4) && (eqpt != CDROM)) {

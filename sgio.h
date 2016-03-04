@@ -10,6 +10,7 @@ enum {
 	ATA_OP_READ_LONG_ONCE		= 0x23,
 	ATA_OP_READ_PIO_EXT		= 0x24,
 	ATA_OP_READ_DMA_EXT		= 0x25,
+	ATA_OP_READ_LOG_EXT		= 0x2f,
 	ATA_OP_READ_FPDMA		= 0x60,	// NCQ
 	ATA_OP_WRITE_PIO		= 0x30,
 	ATA_OP_WRITE_LONG		= 0x32,
@@ -117,6 +118,7 @@ enum {
 
 union reg_flags {
 	unsigned all				:16;
+	struct {
 	union {
 		unsigned lob_all		: 8;
 		struct {
@@ -143,6 +145,7 @@ union reg_flags {
 			unsigned command	: 1;
 		} hob;
 	};
+	} bits;
 } __attribute__((packed));
 
 struct taskfile_regs {
