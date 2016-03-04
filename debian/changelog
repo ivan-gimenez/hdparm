@@ -5,6 +5,8 @@ hdparm (9.48+ds-1) UNRELEASED; urgency=medium
     - add Vcs-* fields  
     - remove -dbg package, -dbgsym is generated automatically  
     - apply cme fix dpkg 
+    - Take over the package. Thanks to Stephen Gran 
+      and Michael Meskes for their former work.  Closes: #816168
   * d/copyright:  
     - update copyright file to comply with DEP5 standatd  
     - use File-Excluded: to remove debian/*, contrib/fix-standby  
