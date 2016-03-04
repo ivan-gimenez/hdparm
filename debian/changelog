@@ -1,3 +1,34 @@
+hdparm (9.48+ds-1) UNRELEASED; urgency=medium
+
+  * d/control:  
+    - remove dpkg-dev from Build-Depends  
+    - add Vcs-* fields  
+    - remove -dbg package, -dbgsym is generated automatically  
+    - apply cme fix dpkg 
+  * d/copyright:  
+    - update copyright file to comply with DEP5 standatd  
+    - use File-Excluded: to remove debian/*, contrib/fix-standby  
+    - add copyright statements for third party files 
+  * d/rules:  
+    - convert to use debhelper  
+    - pass hardening flags to Makefile 
+  * d/watch:  
+    - remove uupdate  
+    - repack and add +ds suffix because we remove the debian dir 
+      shipped by the upstream 
+  * d/patches:  
+    - spelling.patch: fix typos  
+    - hardening.patch: inject hardening LDFLAGS to the Makefile
+  * Imported Upstream version 9.48+ds
+  * d/hdparm.udev: don't trigger the udev rule on sd[a-z]*, Closes: #787969 
+  * d/source:format: 3.0 (quilt)
+  * add back files removed by merge after importing 9.48+ds version:
+    d/20hdparm, d/compat, d/hdparm-udeb.install, d/hdparm.default, 
+    d/hdparm.dev, d/hdparm.dirs, d/hdparm.manpages, d/hdparm.postinit,
+    d/hdparm.postrm, d/hdparm.rules
+
+ -- Alexandre Mestiashvili <alex@biotec.tu-dresden.de>  Fri, 04 Mar 2016 10:51:54 +0100
+
 hdparm (9.43-2) unstable; urgency=medium
 
   * Synced from Ubuntu: (Closes: #725284)
