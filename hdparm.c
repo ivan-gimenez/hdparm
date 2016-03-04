@@ -26,7 +26,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v5.8"
+#define VERSION "v5.9"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -911,7 +911,7 @@ void process_dev (char *devname)
 			on_off(wcache);
 		}
 #ifdef HDIO_SET_WCACHE
-		if (!ioctl(fd, HDIO_SET_WCACHE, wcache))
+		if (ioctl(fd, HDIO_SET_WCACHE, wcache))
 #endif
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD(setcache) failed");

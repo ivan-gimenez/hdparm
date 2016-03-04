@@ -386,9 +386,9 @@ const char *cmd_feat_str[] = {
 #define RM_STAT_SUP		0x0001
 	
 /* word 128: security */
-#define SECU_ENABLED	0x0002
-#define SECU_LEVEL		0x0010
-#define NUM_SECU_STR	6
+#define SECU_ENABLED		0x0002
+#define SECU_LEVEL		0x0100	/* was 0x0010 */
+#define NUM_SECU_STR		6
 const char *secu_str[] = {
 	"supported",			/* word 128, bit 0 */
 	"enabled",			/* word 128, bit 1 */
