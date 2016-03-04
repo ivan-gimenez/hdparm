@@ -1,0 +1,25 @@
+Origin: Alex Mestiashvili <mailatgoogl@gmail.com>
+Subject: fix typo s/Removaeble/Removable/
+ s/offical/official/
+--- hdparm.orig/hdparm.c
++++ hdparm/hdparm.c
+@@ -154,7 +154,7 @@
+ 
+ const char *cfg_str[] =
+ {	"",	        " HardSect",   " SoftSect",  " NotMFM",
+-	" HdSw>15uSec", " SpinMotCtl", " Fixed",     " Removeable",
++	" HdSw>15uSec", " SpinMotCtl", " Fixed",     " Removable",
+ 	" DTR<=5Mbs",   " DTR>5Mbs",   " DTR>10Mbs", " RotSpdTol>.5%",
+ 	" dStbOff",     " TrkOff",     " FmtGapReq", " nonMagnetic"
+ };
+--- hdparm.orig/hdparm.8
++++ hdparm/hdparm.8
+@@ -509,7 +509,7 @@
+ .TP
+ .I -P
+ Set the maximum sector count for the drive\'s internal prefetch mechanism.
+-Not all drives support this feature, and it was dropped from the offical spec
++Not all drives support this feature, and it was dropped from the official spec
+ as of ATA-4.
+ .TP
+ .I --prefer-ata12

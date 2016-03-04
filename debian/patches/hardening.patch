@@ -1,0 +1,13 @@
+Subject: inject hardening FLAGS
+From: Alex Mestiashvili <mailatgoogl@gmail.com>
+--- hdparm.orig/Makefile
++++ hdparm/Makefile
+@@ -27,7 +27,7 @@
+ all: hdparm
+ 
+ hdparm: hdparm.h sgio.h $(OBJS)
+-	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
++	$(CC) $(LDFLAGS) $(EXTRA_LDFLAGS) -o hdparm $(OBJS)
+ 	$(STRIP) hdparm
+ 
+ hdparm.o:	hdparm.h sgio.h
