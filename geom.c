@@ -6,6 +6,7 @@
  * (your choice) the GNU General Public License version 2,
  * or a BSD style license.
  */
+#define _FILE_OFFSET_BITS 64
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -90,10 +91,11 @@ int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects,
 		 * So try and correct it using other info we have at hand.
 		 */
 		if (nsectors && cyls && heads && sects) {
-			__u64 chs, hs = *heads * *sects;
-			chs = ((__u64)*cyls) * hs;
-			if (chs < *nsectors)
-				*cyls = *nsectors / hs;
+			__u64 hs  = (*heads) * (*sects);
+			__u64 cyl = (*cyls);
+			__u64 chs = cyl * hs;
+			if (chs < (*nsectors))
+				*cyls = (*nsectors) / hs;
 		}
 	}
 

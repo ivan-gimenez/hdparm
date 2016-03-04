@@ -1,4 +1,4 @@
-.TH HDPARM 8 "April 2009" "Version 9.15"
+.TH HDPARM 8 "September 2009" "Version 9.27"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -170,6 +170,7 @@ Set cd/dvd drive speed.  This is NOT necessary for regular operation,
 as the drive will automatically switch speeds on its own.
 But if you want to play with it, just supply a speed number
 after the option, usually a number like 2 or 4.
+This can be useful in some cases, though, to smooth out DVD video playback.
 .TP
 .I -f
 Sync and flush the buffer cache for the device on exit.
@@ -179,29 +180,37 @@ and
 .B -T
 timings and other flags.
 .TP
+.I --fallocate
+This flag currently works only on ext4 and xfs filesystem types.
+When used, this must be the only flag given.
+It requires two parameters: the desired file size in kilo-bytes
+(byte count divided by 1024), followed by the pathname for the new file.
+It will create a new file of the specified size,
+but without actually having to write any data to the file.
+This will normally complete very quickly, and without thrashing the storage device.
+.IP
+Eg. Create a 10KByte file:
+.B hdparm --fallocate 10 temp_file
+.TP
 .I --fibmap
 When used, this must be the only flag given.
 It requires a file path as a parameter, and will print
-out a list of the device extents (sector ranges) occupied by that file
-on disk.  Sector numbers are given as absolute LBA numbers,
-referenced from sector 0 of the physical device
-(*not* the partition or filesystem).
+out a list of the block extents (sector ranges)
+occupied by that file on disk.
+Sector numbers are given as absolute LBA numbers,
+referenced from sector 0 of the physical device rather
+than from the partition or filesystem.
 This information can then be used for a variety of purposes,
 such as examining the degree of fragmenation of larger files, or
 determining appropriate sectors to deliberately corrupt
 during fault-injection testing procedures.
-.TP
-.I --fibmap-sector
-When used, this must be the only flag given.
-It requires a file path followed by a sector number as parameters.
-This sector number is given relative to the start of the file itself,
-not the device.  hdparm will scan the device extents occupied by the file,
-and print out the absolute LBA number of the requested sector of the file.
-This LBA number is referenced from sector 0 of the physical device
-(not the partition or filesystem).
-This LBA value can then be used for a variety of purposes,
-including determining an appropriate sector to deliberately corrupt
-during fault-injection testing procedures.
+.IP
+This flag uses the new FIEMAP (file extent map) ioctl() when available,
+and falls back to the older FIBMAP (file block map) ioctl() otherwise.
+Note that FIBMAP suffers from a 32-bit block-number interface,
+and thus not work beyond 8TB or 16TB.  FIBMAP is also very slow,
+and does not deal well with preallocated uncommitted extents
+in ext4/xfs file systems, unless a sync() is done before using this flag.
 .TP
 .I --fwdownload
 When used, this should be the only flag given.
@@ -214,10 +223,18 @@ command, using either transfer protocol 7 (entire file at once),
 or, if the drive supports it, transfer protocol 3 (segmented download).
 This command is 
 .B EXTREMELY DANGEROUS
-and
-.B HAS NEVER BEEN PROVEN TO WORK
-and will probably destroy both the drive and all data on it.
+and could destroy both the drive and all data on it.
 .B DO NOT USE THIS COMMAND.
+The 
+.B --fwdownload-mode3
+,
+.B --fwdownload-mode3-max
+, and
+.B --fwdownload-mode7
+variations on basic
+.B --fwdownload
+allow overriding automatic protocol detection in favour of
+forcing hdparm to use a specific transfer protocol, for testing purposes only.
 .TP
 .I -F
 Flush the on-drive write cache buffer (older drives may not implement this).
@@ -352,7 +369,7 @@ Under rare circumstances, such failures can result in
 .TP
 .I --make-bad-sector
 Deliberately create a bad sector (aka. "media error") on the disk.
-EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
+.B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
 This can be useful for testing of device/RAID error recovery mechanisms.
 The sector number is given as a (base10) parameter after the flag.
 Depending on the device, hdparm will choose one of two possible ATA commands for
@@ -561,6 +578,30 @@ ensure accurate measurements, the buffer cache is flushed during the
 processing of
 .I -t
 using the BLKFLSBUF ioctl.
+.TP
+.I --trim-sector-ranges
+For Solid State Drives (SSDs).
+.B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
+Tells the drive firmware 
+to discard unneeded data sectors, destroying any data that may have
+been present within them.  This makes those sectors available for
+immediate use by the firmware's garbage collection mechanism, to
+improve scheduling for wear-leveling of the flash media.
+This option expects one or more sector range pairs immediately after the flag:
+an LBA starting address, a colon, and a sector count, with no intervening spaces.
+.B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
+.IP
+Eg.
+.B hdparm --trim-sector-ranges 1000:4 7894:16 /dev/sdz
+.TP
+.I --trim-sector-ranges-stdin
+Identical to
+.B --trim-sector-ranges
+above, except the list of lba:count pairs is read from stdin
+rather than being specified on the command line.  This can be used
+to avoid problems with excessively long command lines.  It also permits
+batching of many more sector ranges into single commands to the drive,
+up to the currently configured transfer limit (max_sectors_kb). 
 .TP
 .I -u
 Get/set interrupt-unmask flag for the drive.  A setting of

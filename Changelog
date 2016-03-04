@@ -1,3 +1,71 @@
+hdparm-9.27
+	- repackaged again with wiper-2.5
+	- wiper.sh updated to wiper-2.3
+	- fix definition of reg_flags in sgio.h to work with old IDE drivers again
+hdparm-9.26
+	- wiper.sh updated to wiper-2.2
+	- zero-day bugfix for "hdparm -i" on model names with embedded blanks
+	- bugfix for --security-erase-enhanced, courtesy of Cyril.Guyot@hitachigst.com
+	- set _FILE_OFFSET_BITS in geom.c (still need to do this in hdparm.c someday)
+	- added reporting for "Deterministic read ZEROs after TRIM" feature
+hdparm-9.25
+	- slightly tidier output from --trim-* commands
+	- restrict --trim-sector-ranges-stdin to limit from /sys/block/sd?/queue/max_sectors_kb
+	- updated wiper.sh to use --trim-sector-ranges-stdin rather than --trim-sector-ranges
+hdparm-9.24
+	- fixed malloc() bug in --trim-sector-ranges: it was allocating half the required size (oops).
+hdparm-9.23
+	- minor cosmetic changes in fibmap.c
+	- added --trim-sector-ranges-stdin for wiper.sh-2.0
+	- tightened up excess-args checking on a number of flags
+	- added name to version line
+hdparm-9.22
+	- added fsync() call inside --fallocate
+	- fixed fibmap.c to work around an observed ext4 bug with FIEMAP's "LAST" flag
+	- added detailed comments to wiper.sh
+	- more rework of wiper.sh, added xfs support, added generic online support
+	- twiddled the code in geom.c slightly
+	- cosmetic changes in fibmap.c and the manpage description of --fibmap
+	- added kernel patch for compat_ioctl::fiemap support
+hdparm-9.21
+	- fixes and (big) speedups to wiper.sh (v1.2) script
+hdparm-9.20
+	- unified the online/offline wiper scripts into a single wiper.sh script
+	- fixed bug whereby the wiper scripts generated command-lines too long for bash
+	- fixed non-zero exit status from successful --trim-sector-ranges
+	- reimplemented --trim-sector-ranges to use sg16() directly, with aligned data
+	- allow wiper scripts to issue TRIM with up to 255 sectors of LBA-range data
+	- added kernel patch file for sil24 protocol fix, needed for wiper/TRIM
+	- cosmetic updates to the wiper scripts
+	- fixed confirmation prompt text for --trim-sector-ranges
+	- fixed manpage example for --trim-sector-ranges
+	- removed some dead code (previously #if 0'd)
+hdparm-9.19
+	- fixed compile of fallocate.c on older systems
+	- fixed man page description of --fallocate (parameters were reversed)
+hdparm-9.18
+	- fixed -E (set cd/dvd streaming speed)
+	- updated man page for --fallocate, indicating ext4/xfs only
+	- bumped max_sectors to 8000000 per TRIM in wiper scripts
+	- s/awk/$GAWK/ in wiper.sh.online script
+	- fixed Changelog for 9.17
+hdparm-9.17
+	- added wiper/ subdirectory with preliminary SSD-wiper (TRIM) scripts
+	- nuked kernel_patches/ subdirectory
+	- Capitalize first word of each line of help output
+	- added ioctl(FIEMAP) support to --fibmap
+	- added --fallocate flag
+	- added --trim-sector-ranges flag
+	- removed --trim-sectors flag
+	- removed --fibmap-sector flag
+	- first cut at wiper.sh script, to trim unused space on a non-rw ext[234] filesystem
+	- embed VERSION string for easier digging out with strings(1)
+hdparm-9.16
+	- new protocol-specific forms of --fwdownload flags
+	- added --trim-sectors flag
+	- prevent segfaults when get_identify_data() fails
+	- added full word69 features reporting for -I
+	- added BuffSize=unknown to -i
 hdparm-9.15
 	- fix sgio.c LBA48 bugs on big-endian machines
 	- fix -m to work with libata
