@@ -1,97 +1,20 @@
-.TH HDPARM 8 "October 1999" "Version 3.6"
+.TH HDPARM 8 "November 2001" "Version 4.5"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
 .SH SYNOPSIS
 .B hdparm
-[
-.B -a
-[sectcount]
-] [
-.B -A
-[0|1]
-] [
-.B -c
-[chipset_mode]
-] [
-.B -C
-] [
-.B -d
-[0|1]
-] [
-.B -f
-] [
-.B -g
-] [
-.B -i
-] [
-.B -k
-[0|1]
-] [
-.B -K
-[0|1]
-] [
-.B -L
-[0|1]
-] [
-.B -m
-[sectcount]
-] [
-.B -p
-[0|1|2|3|4|5]
-] [
-.B -P
-[sectcount]
-] [
-.B -q
-] [
-.B -r
-[0|1]
-] [
-.B -S
-[timeout]
-] [
-.B -T
-] [
-.B -t
-] [
-.B -u
-[0|1]
-] [
-.B -v
-] [
-.B -W
-[0|1]
-] [
-.B -X
-[xfermode]
-] [
-.B -y
-] [
-.B -Y
-] [
-.B -Z
-] [device] ..
+[ flags ] [device] ..
 .SH DESCRIPTION
 .BI hdparm
 provides a command line interface to various hard disk ioctls
-supported by the stock Linux IDE/ST-506 device driver.  This utility
-requires Linux kernel version 1.2.13 or later.  Some options may
-not work correctly with earlier kernels.  In addition, several
-options are supported only for kernels which include the new
-(E)IDE device driver, such as version 2.0.10 or later.
-These options are unavailable
-when hdparm is compiled on systems with older kernel files in
-/usr/include/linux.
+supported by the stock Linux ATA/IDE device driver subsystem.
+Some options may work correctly only with the latest kernels.
+For best results, compile hdparm with the include files from the latest kernel source code.
 .SH OPTIONS
 When no flags are given,
 .I -acdgkmnru
-is assumed (except when a given device is SCSI or an old XT-type MFM/RLL,
-in which cases
-.I -gr
-and
-.I -adgr
-are the defaults, respectively).
+is assumed.
 .TP
 .I -a 
 Get/set sector count for filesystem read-ahead.  This is used to improve
@@ -106,6 +29,12 @@ which alleviates the need for a filesystem read-ahead in many situations.
 .TP
 .I -A
 Disable/enable the IDE drive's read-lookahead feature (usually ON by default).
+.TP
+.I -b
+Get/set bus state.
+.TP
+.I -B
+Get setting of Advanced Power Management feature, if the drive supports it.
 .TP
 .I -c
 Query/enable (E)IDE 32-bit I/O support.  A numeric parameter can be
@@ -157,6 +86,18 @@ to ensure that the drive itself is programmed for multiword DMA mode2.
 Using DMA does not necessarily provide any improvement in throughput or
 system performance, but many folks swear by it.  Your mileage may vary.
 .TP
+.I -D
+Enable/disable the on-drive defect management feature,
+whereby the drive firmware tries to automatically manage
+defective sectors by relocating them to "spare" sectors
+reserved by the factory for such.
+.TP
+.I -E
+Set cdrom speed.  This is NOT necessary for regular operation,
+as the drive will automatically switch speeds on its own.
+But if you want to play with it, just supply a speed number
+after the option, usually a number like 2 or 4.
+.TP
 .I -f
 Sync and flush the buffer cache for the device on exit.
 This operation is also performed as part of the
@@ -175,7 +116,8 @@ the beginning of the drive.
 Display terse usage information (help).
 .TP
 .I -i
-Display the identification info that was obtained from the drive at boot time,
+Display the identification info that was obtained from the drive at
+.I boot time,
 if available.
 This is a feature of modern IDE drives,
 and may not be supported by older devices.
@@ -189,11 +131,10 @@ refer to
 .TP
 .I -I
 Request identification info directly from the drive,
-which is displayed in its raw form with no endian changes
-or corrections.
-Otherwise similar to the
+which is displayed in a new expanded format with considerably
+more detail than with the older
 .I -i
-option.
+flag.
 .TP
 .I -k
 Get/set the keep_settings_over_reset flag for the drive.
@@ -230,7 +171,7 @@ maintains the door locking mechanism automatically, depending on drive usage
 be a nuisance if the root partition is on a removeable disk, since the root
 partition is left mounted (read-only) after shutdown.  So, by using this
 command to unlock the door
--b after
+.b after
 the root filesystem is remounted read-only, one can then remove the cartridge
 from the drive after shutdown.
 .TP
@@ -257,6 +198,10 @@ flag can be used to find the maximum setting supported by an installed drive
 Some drives claim to support multiple mode, but lose data at some settings.
 Under rare circumstances, such failures can result in
 .B massive filesystem corruption.
+.TP
+.I -n
+Get or set the "ignore write errors" flag in the driver.
+Do NOT play with this without grokking the driver source code first.
 .TP
 .I -p
 Attempt to reprogram the IDE interface chipset for the specified PIO mode,
@@ -294,6 +239,13 @@ flags.
 .I -r
 Get/set read-only flag for device.  When set, write operations are not
 permitted on the device.
+.TP
+.I -R
+Register an IDE interface.
+.B Dangerous.
+See the
+.B -U
+option for more information.
 .TP
 .I -S
 Set the standby (spindown) timeout for the drive.
@@ -369,12 +321,32 @@ than 2.0.13.  Disabling the
 feature of these interfaces (usually a BIOS/CMOS setting)
 provides a safe fix for the problem for use with earlier kernels.
 .TP
+.I -U
+Un-register an IDE interface.
+.B Dangerous.
+The companion for the
+.B -R
+option.
+Intended for use with hardware made specifically for hot-swapping (very rare!).  
+Use with knowledge and
+.B extreme caution
+as this can easily hang or damage your system.
+The hdparm source distribution includes a 'contrib' directory with
+some user-donated scripts for hot-swapping on the UltraBay of a ThinkPad 600E.
+Use at your own risk.
+.TP
 .I -v 
 Display all settings, except -i (same as -acdgkmnru for IDE, -gr for SCSI or
 -adgr for XT).  This is also the default behaviour when no flags are specified.
+-TP
+.I -w
+Perform a device reset (DANGEROUS).  Do NOT use this option.
+It exists for unlikely situations where a reboot might otherwise be
+required to get a confused drive back into a useable state.
 .TP
 .I -W
-Disable/enable the IDE drive's write-caching feature (usually OFF by default).
+Disable/enable the IDE drive's write-caching feature
+(default state is undeterminable; manufacturer/model specific).
 .TP
 .I -X 
 Set the IDE transfer mode for newer (E)IDE/ATA2 drives.
@@ -463,6 +435,9 @@ ANSI ASC X3T9.2 working draft, revision 4a, April 19, 1993.
 .PP
 .B AT Attachment Interface with Extensions (ATA-2),
 ANSI ASC X3T9.2 working draft, revision 2f, July 26, 1994.
+.PP
+.B AT Attachment with Packet Interface - 5 (ATA/ATAPI-5),
+T13-1321D working draft, revision 3, February 29, 2000.
 .PP
 .B Western Digital Enhanced IDE Implementation Guide,
 by Western Digital Corporation, revision 5.0, November 10, 1993.
