@@ -1,4 +1,4 @@
-.TH HDPARM 8 "November 2001" "Version 4.5"
+.TH HDPARM 8 "November 2004" "Version 5.8"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -29,12 +29,18 @@ which alleviates the need for a filesystem read-ahead in many situations.
 .TP
 .I -A
 Disable/enable the IDE drive's read-lookahead feature (usually ON by default).
+Usage:
+.B -A0
+(disable) or
+.B -A1
+(enable).
 .TP
 .I -b
 Get/set bus state.
 .TP
 .I -B
-Get setting of Advanced Power Management feature, if the drive supports it.
+Set Advanced Power Management feature, if the drive supports it. A low value
+means aggressive power management and a high value means better performance. A value of 255 will disable apm on the drive.
 .TP
 .I -c
 Query/enable (E)IDE 32-bit I/O support.  A numeric parameter can be
@@ -73,18 +79,20 @@ and
 flags can be used to manipulate the IDE power modes.
 .TP
 .I -d
-Disable/enable the "using_dma" flag for this drive.  This option only works
-with a few combinations of drives and interfaces which support DMA
-and which are known to the IDE driver (and with all supported XT interfaces).
-In particular, the Intel Triton chipset
-is supported for bus-mastered DMA operation with many drives (experimental).
-It is also a good idea to use the
-.I -X34
+Disable/enable the "using_dma" flag for this drive.  This option now works
+with most combinations of drives and PCI interfaces which support DMA
+and which are known to the IDE driver.
+It is also a good idea to use the appropriate
+.I -X
 option in combination with
 .I -d1
-to ensure that the drive itself is programmed for multiword DMA mode2.
-Using DMA does not necessarily provide any improvement in throughput or
-system performance, but many folks swear by it.  Your mileage may vary.
+to ensure that the drive itself is programmed for the correct DMA mode,
+although most BIOSs should do this for you at boot time.
+Using DMA nearly always gives the best performance,
+with fast I/O throughput and low CPU usage.
+But there are at least a few configurations of chipsets and drives
+for which DMA does not make much of a difference, or may even slow
+things down (on really messed up hardware!).  Your mileage may vary.
 .TP
 .I -D
 Enable/disable the on-drive defect management feature,
@@ -136,6 +144,29 @@ more detail than with the older
 .I -i
 flag.
 .TP
+.I -Istdin
+This is a special "no seatbelts" variation on the
+.B -I
+option,
+which accepts a drive identification block as standard input
+instead of using a /dev/hd* parameter.
+The format of this block must be
+.I exactly
+the same as that found in the /proc/ide/*/hd*/identify "files",
+or that produced by the
+.B -Istdout
+option described below.
+This variation is designed for use with collected "libraries" of drive
+identification information, and can also be used on ATAPI
+drives which may give media errors with the standard mechanism.
+.TP
+.I -Istdout
+This option simply dumps the identify data in hex to stdout,
+in a format similar to that from /proc/, and suitable for
+later use with the
+.I -Istdin
+option.
+.TP
 .I -k
 Get/set the keep_settings_over_reset flag for the drive.
 When this flag is set, the driver will preserve the
@@ -162,16 +193,17 @@ Not all drives support this feature.
 .TP
 .I -L
 Set the drive's doorlock flag.  Setting this to
-.b 1
-will lock the door mechanism of some removeable hard drives
+.B 1
+will lock the door mechanism of some removable hard drives
 (eg. Syquest, ZIP, Jazz..), and setting it to
-.b 0 will unlock the door mechanism.  Normally, Linux
+.B 0
+will unlock the door mechanism.  Normally, Linux
 maintains the door locking mechanism automatically, depending on drive usage
 (locked whenever a filesystem is mounted).  But on system shutdown, this can
 be a nuisance if the root partition is on a removeable disk, since the root
 partition is left mounted (read-only) after shutdown.  So, by using this
 command to unlock the door
-.b after
+.B after
 the root filesystem is remounted read-only, one can then remove the cartridge
 from the drive after shutdown.
 .TP
@@ -199,6 +231,14 @@ Some drives claim to support multiple mode, but lose data at some settings.
 Under rare circumstances, such failures can result in
 .B massive filesystem corruption.
 .TP
+.I -M
+Get/set Automatic Acoustic Management (AAM) setting. Most modern harddisk drives 
+have the ability to speed down the head movements to reduce their noise output.
+The possible values are between 0 and 254. 128 is the most quiet (and therefore
+slowest) setting and 254 the fastest (and loudest). Some drives have only two 
+levels (quiet / fast), while others may have different levels between 128 and 254.
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
+.TP
 .I -n
 Get or set the "ignore write errors" flag in the driver.
 Do NOT play with this without grokking the driver source code first.
@@ -224,8 +264,8 @@ Set the maximum sector count for the drive's internal prefetch mechanism.
 Not all drives support this feature.
 .TP
 .I -q
-Handle the next flag quietly, supressing normal output.  This is useful
-for reducing screen clutter when running from /etc/rc.c/rc.local.
+Handle the next flag quietly, suppressing normal output.  This is useful
+for reducing screen clutter when running from system startup scripts.
 Not applicable to the
 .I -i
 or
@@ -236,9 +276,13 @@ or
 .I -T
 flags.
 .TP
+.I -Q
+Set tagged queue depth (1 or greater), or turn tagged queuing off (0).
+This only works with the newer 2.5.xx (or later) kernels, and only with
+the few drives that currently support it.
+.TP
 .I -r
-Get/set read-only flag for device.  When set, write operations are not
-permitted on the device.
+Get/set read-only flag for the device.  When set, Linux disallows write operations on the device.
 .TP
 .I -R
 Register an IDE interface.
@@ -248,18 +292,21 @@ See the
 option for more information.
 .TP
 .I -S
-Set the standby (spindown) timeout for the drive.
-This value is used by the drive to determine how long to wait (with no 
-disk activity) before turning off the spindle motor to save power.
-Under such circumstances, the drive may take as long as 30 seconds
-to respond to a subsequent disk access, though most drives are much quicker.
-The encoding of the timeout value is somewhat peculiar.  A value of zero
-means "off".  Values from 1 to 240 specify multiples of 5 seconds,
-for timeouts from 5 seconds to 20 minutes.
-Values from 241 to 251 specify from 1 to 11 units of 30 minutes,
-for timeouts from 30 minutes to 5.5 hours.  A value of 252 signifies
-a timeout of 21 minutes, 253 sets a vendor-defined timeout,
-and 255 is interpreted as 21 minutes plus 15 seconds.
+Set the standby (spindown) timeout for the drive.  This value is used
+by the drive to determine how long to wait (with no disk activity)
+before turning off the spindle motor to save power.  Under such
+circumstances, the drive may take as long as 30 seconds to respond to
+a subsequent disk access, though most drives are much quicker.  The
+encoding of the timeout value is somewhat peculiar.  A value of zero
+means "timeouts are disabled": the device will not automatically enter
+standby mode.  Values from 1 to 240 specify multiples of 5 seconds,
+yielding timeouts from 5 seconds to 20 minutes.  Values from 241 to
+251 specify from 1 to 11 units of 30 minutes, yielding timeouts from
+30 minutes to 5.5 hours.  A value of 252 signifies a timeout of 21
+minutes. A value of 253 sets a vendor-defined timeout period between 8
+and 12 hours, and the value 254 is reserved.  255 is interpreted as 21
+minutes plus 15 seconds.  Note that some older drives may have very
+different interpretations of these values.
 .TP
 .I -T
 Perform timings of cache reads for benchmark and comparison purposes.
@@ -285,7 +332,7 @@ couple of megabytes of free memory.  This displays the speed of reading
 through the buffer cache to the disk without any prior caching of data.
 This measurement is an indication of how fast the drive can sustain
 sequential data reads under Linux, without any filesystem overhead.  To
-ensure accurate measurments, the buffer cache is flushed during the
+ensure accurate measurements, the buffer cache is flushed during the
 processing of
 .I -t
 using the BLKFLSBUF ioctl.
@@ -338,7 +385,7 @@ Use at your own risk.
 .I -v 
 Display all settings, except -i (same as -acdgkmnru for IDE, -gr for SCSI or
 -adgr for XT).  This is also the default behaviour when no flags are specified.
--TP
+.TP
 .I -w
 Perform a device reset (DANGEROUS).  Do NOT use this option.
 It exists for unlikely situations where a reboot might otherwise be
@@ -348,16 +395,20 @@ required to get a confused drive back into a useable state.
 Disable/enable the IDE drive's write-caching feature
 (default state is undeterminable; manufacturer/model specific).
 .TP
+.I -x 
+Tristate device for hotswap (DANGEROUS).
+.TP
 .I -X 
-Set the IDE transfer mode for newer (E)IDE/ATA2 drives.
+Set the IDE transfer mode for newer (E)IDE/ATA drives.
 This is typically used in combination with
 .I -d1
-when enabling DMA to/from a drive on a supported interface chipset
-(such as the Intel 430FX Triton), where
-.I -X34
-is used to select multiword DMA mode2 transfers.
+when enabling DMA to/from a drive on a supported interface chipset, where
+.I -X mdma2
+is used to select multiword DMA mode2 transfers and
+.I -X sdma1 
+is used to select simple mode 1 DMA transfers.
 With systems which support UltraDMA burst timings,
-.I -X66
+.I -X udma2
 is used to select UltraDMA mode2 transfers (you'll need to prepare
 the chipset for UltraDMA beforehand).
 Apart from that, use of this flag is
@@ -402,6 +453,9 @@ The current power mode status can be checked using the
 .B -C
 flag.
 .TP
+.I -z
+Force a kernel re-read of the partition table of the specified device(s).
+.TP
 .I -Z
 Disable the automatic power-saving function of certain Seagate drives
 (ST3xxx models?), to prevent them from idling/spinning-down
@@ -438,6 +492,9 @@ ANSI ASC X3T9.2 working draft, revision 2f, July 26, 1994.
 .PP
 .B AT Attachment with Packet Interface - 5 (ATA/ATAPI-5),
 T13-1321D working draft, revision 3, February 29, 2000.
+.PP
+.B AT Attachment with Packet Interface - 6 (ATA/ATAPI-6),
+T13-1410D working draft, revision 3b, February 26, 2002.
 .PP
 .B Western Digital Enhanced IDE Implementation Guide,
 by Western Digital Corporation, revision 5.0, November 10, 1993.

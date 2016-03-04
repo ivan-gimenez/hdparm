@@ -10,16 +10,20 @@ sbindir = $(exec_prefix)/sbin
 mandir = $(manprefix)/share/man
 oldmandir = $(manprefix)/man
 
+ifndef CC
 CC = gcc
-CFLAGS = -O2 -Wall -Wstrict-prototypes -s
-LDFLAGS =
+endif
+CFLAGS := -O2 -W -Wall -Wbad-function-cast -Wcast-align -Wpointer-arith -Wcast-qual -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -fkeep-inline-functions -Wwrite-strings -Waggregate-return -Wnested-externs -Wtrigraphs $(CFLAGS)
+
+
+LDFLAGS = -s
 INSTALL = install
 INSTALL_DATA = $(INSTALL) -m 644
 INSTALL_PROGRAM = $(INSTALL)
 
 all: hdparm
 
-hdparm: hdparm.o identify.o
+hdparm: hdparm.o identify.o hdparm.h
 	$(CC) $(LDFLAGS) -o hdparm hdparm.o identify.o
  
 install: all hdparm.8
