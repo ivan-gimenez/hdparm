@@ -1,4 +1,4 @@
-.TH HDPARM 8 "Jul 30, 1996" "Version 3.1"
+.TH HDPARM 8 "Feb 28, 1997" "Version 3.3"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -13,6 +13,8 @@ hdparm \- get/set hard disk parameters
 ] [
 .B -c
 [chipset_mode]
+] [
+.B -C
 ] [
 .B -d
 [0|1]
@@ -60,6 +62,10 @@ hdparm \- get/set hard disk parameters
 ] [
 .B -X
 [xfermode]
+] [
+.B -y
+] [
+.B -Y
 ] [
 .B -Z
 ] [device] ..
@@ -114,6 +120,23 @@ Note that "32-bit" refers to data transfers across a PCI or VLB bus to the
 interface card only; all (E)IDE drives still have only a 16-bit connection
 over the ribbon cable from the interface card.
 .TP
+.I -C
+Check the current IDE power mode status, which will always be one of
+.B unknown
+(drive does not support this command),
+.B active/idle
+(normal operation),
+.B standby
+(low power mode, drive has spun down),
+or
+.B sleeping
+(lowest power mode, drive is completely shut down).
+The
+.B -S, -y, -Y,
+and
+.B -Z
+flags can be used to manipulate the IDE power modes.
+.TP
 .I -d
 Disable/enable the "using_dma" flag for this drive.  This option only works
 with a few combinations of drives and interfaces which support DMA
@@ -158,7 +181,9 @@ refer to
 (ANSI ASC X3T9.2 working draft, revision 4a, April 19/93).
 .TP
 .I -I
-Request identification info directly from the drive.
+Request identification info directly from the drive,
+which is displayed in its raw form with no endian changes
+or corrections.
 Otherwise similar to the
 .I -i
 option.
@@ -291,7 +316,7 @@ processing of
 .I -t
 using the BLKFLSBUF ioctl.
 If the
-.I -t
+.I -T
 flag is also specified, then a correction factor based on the outcome of
 .I -T
 will be incorporated into the result reported for the
@@ -317,7 +342,7 @@ and
 (E)IDE interfaces can be
 .B unreliable
 (due to a hardware flaw) when this option is used with kernel versions earlier
-than 1.3.32.  Disabling the
+than 2.0.13.  Disabling the
 .B IDE prefetch
 feature of these interfaces (usually a BIOS/CMOS setting)
 provides a safe fix for the problem for use with earlier kernels.
@@ -357,6 +382,24 @@ PIO mode number plus 8.
 Thus, a value of 09 sets PIO mode1, 10 enables PIO mode2,
 and 11 selects PIO mode3.
 Setting 00 restores the drive's "default" PIO mode, and 01 disables IORDY.
+.TP
+.I -y
+Force an IDE drive to immediately enter the low power consumption
+.B standby
+mode, usually causing it to spin down.
+The current power mode status can be checked using the
+.B -C
+flag.
+.TP
+.I -Y
+Force an IDE drive to immediately enter the lowest power consumption
+.B sleep
+mode, causing it to shut down completely.  A hard or soft reset
+is required before the drive can be accessed again
+(the Linux IDE driver will automatically handle issuing a reset if/when needed).
+The current power mode status can be checked using the
+.B -C
+flag.
 .TP
 .I -Z
 Disable the automatic power-saving function of certain Seagate drives
