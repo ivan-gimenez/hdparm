@@ -1,3 +1,24 @@
+hdparm-9.48:
+	- fix bugs from devslp patch.
+hdparm-9.47:
+	- added devslp patch (IDENTIFY word 76) from David Woodhouse.
+	- help and manpage fixes from Michal Minar.
+hdparm-9.46:
+	- fix compilation with "musl libc".
+	- added "hex:aabbcc.." for binary security passwords.
+	- return EIO when read_big_block() fails
+	- use llabs() rather than abs() in identify.c
+hdparm-9.45:
+	- fixed blocksize handling in fibmap code to use result from FIGETBSZ in more places (Anton Altaparmakov).
+	- fixed divide by zero exception in geom.c
+	- tidying up formatting in sgio.c
+hdparm-9.44:
+	- changed reg_flags struct to more closely match kernel definition (Lucas Magasweran).
+	- added fwdownload mode "E" support (Rusty Carruth).
+	- fix timeouts for security-erase (again!)
+	- change display of security "supported" to handle ambiguous reporting from drives
+	- don't rely upon C-library for byte-swapping
+	- added --dco-setmax support, courtesy of Geoff Papilion.
 hdparm-9.43
 	- rearrange flag execution so that the idle/standby/sleep "now" flags are executed last.
 hdparm-9.42
