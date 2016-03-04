@@ -1,4 +1,4 @@
-.TH HDPARM 8 "February 2005" "Version 5.9"
+.TH HDPARM 8 "April 2005" "Version 6.0"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -460,6 +460,40 @@ Force a kernel re-read of the partition table of the specified device(s).
 Disable the automatic power-saving function of certain Seagate drives
 (ST3xxx models?), to prevent them from idling/spinning-down
 at inconvenient times.
+.TP
+.B ATA Security Feature Set
+.TP
+These switches are DANGEROUS to experiment with, and might not work with every kernel.
+.TP
+.I -F, --security-freeze             
+Freeze the drive's security settings.
+The drive does not accept any security commands until next power-on reset.
+Use this function in combination with --security-unlock to protect drive
+from any attempt to set a new password. Can be used standalone, too.
+.TP
+.I --security-unlock PWD 
+Unlock the drive, using password PWD (DANGEROUS).
+Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
+The applicable drive password is selected with the --security-mode switch.
+.TP
+.I --security-set-pass PWD 
+Lock the drive, using password PWD (Set Password) (DANGEROUS).
+Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
+The applicable drive password is selected with the --security-mode switch.
+.TP
+.I --security-disable PWD 
+Disable drive locking, using password PWD (DANGEROUS).
+Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
+The applicable drive password is selected with the --security-mode switch.
+.TP
+.I --security-mode MODE 
+Specifies which password (user/master) to select,
+and which security mode (high/maximum) to set.
+Only useful in combination with --security-unlock, --security-set-pass, or --security-disable
+        u       user password, high security
+        U       user password, maximum security
+        m       master password, high security
+        M       master password, maximum security
 .SH BUGS
 As noted above, the
 .B -m sectcount

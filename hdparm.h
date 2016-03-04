@@ -23,3 +23,4 @@ extern void time_device (int fd);
 extern void no_scsi (void);
 extern void no_xt (void);
 extern void process_dev (char *devname);
+

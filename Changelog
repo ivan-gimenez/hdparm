@@ -1,3 +1,6 @@
+hdparm-6.0
+	- correct usage of BLKGETSIZE64 (returns bytes instead of sectors)
+	- Added ATA Security switches (Benjamin Benz bbe[AT]heise[DOT]de)
 hdparm-5.9
 	- fix security-mode display (Franz Lehner)
 	- fixed -W bug (Stephan Gran)
