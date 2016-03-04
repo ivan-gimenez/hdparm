@@ -1,7 +1,5 @@
 Source: hdparm
-Maintainer: Stephen Gran <sgran@debian.org>
-Uploaders: Michael Meskes <meskes@debian.org>,
-           Alexandre Mestiashvili <alex@biotec.tu-dresden.de>
+Maintainer: Alexandre Mestiashvili <alex@biotec.tu-dresden.de>
 Section: admin
 Priority: optional
 Build-Depends: debhelper (>= 9)
