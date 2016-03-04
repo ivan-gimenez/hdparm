@@ -1,5 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2007 -- freely distributable */
+/*          - by Mark Lord (C) 1994-2008 -- freely distributable */
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v8.3"
+#define VERSION "v8.6"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -159,10 +159,8 @@ static void flush_buffer_cache (int fd)
 	sync();
 	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
 		perror("BLKFLSBUF failed");
-	sync();
-	/* await completion */
-	if (do_drive_cmd(fd, NULL) && errno != EINVAL && errno != ENOTTY && errno != ENOIOCTLCMD)
-		perror("HDIO_DRIVE_CMD(null) (wait for flush complete) failed");
+	else
+		do_drive_cmd(fd, NULL);	/* IDE: await completion */
 	sync();
 }
 
@@ -678,6 +676,7 @@ do_set_security (int fd)
 	int err = 0;
 	const char *description;
 	struct hdio_taskfile *r;
+	__u8 *data;
 
 	r = malloc(sizeof(struct hdio_taskfile) + 512);
 	if (!r) {
@@ -686,13 +685,14 @@ do_set_security (int fd)
 		exit(err);
 	}
 
-	memset(r, 0, sizeof(struct hdio_taskfile));
+	memset(r, 0, sizeof(struct hdio_taskfile) + 512);
 	r->cmd_req	= TASKFILE_CMD_REQ_OUT;
 	r->dphase	= TASKFILE_DPHASE_PIO_OUT;
 	r->obytes	= 512;
 	r->lob.command	= security_command;
-	r->data[0]	= security_master & 0x01;
-	memcpy(&r->data[2], security_password, 32);
+	data		= (__u8*)r->data;
+	data[0]		= security_master & 0x01;
+	memcpy(data+2, security_password, 32);
 
 	/* Not setting any oflags causes a segfault and most
 	   of the times a kernel panic */
@@ -702,7 +702,7 @@ do_set_security (int fd)
 	switch (security_command) {
 		case ATA_OP_SECURITY_ERASE_UNIT:
 			description = "SECURITY_ERASE";
-			r->data[0] |= (enhanced_erase & 0x02);
+			data[0] |= (enhanced_erase & 0x02);
 			break;
 		case ATA_OP_SECURITY_DISABLE:
 			description = "SECURITY_DISABLE";
@@ -712,11 +712,11 @@ do_set_security (int fd)
 			break;
 		case ATA_OP_SECURITY_SET_PASS:
 			description = "SECURITY_SET_PASS";
-			r->data[1] = (security_mode & 0x01);
+			data[1] = (security_mode & 0x01);
 			if (security_master) {
 				/* master password revision code */
-				r->data[34] = 0x11;
-				r->data[35] = 0xff;
+				data[34] = 0x11;
+				data[35] = 0xff;
 			}
 			break;
 		default:
@@ -724,9 +724,9 @@ do_set_security (int fd)
 			exit(EINVAL);
 	}
 	printf(" Issuing %s command, password=\"%s\", user=%s",
-		description, security_password, r->data[0] ? "master" : "user");
+		description, security_password, data[0] ? "master" : "user");
 	if (security_command == ATA_OP_SECURITY_SET_PASS)
-		printf(", mode=%s", r->data[1] ? "max" : "high");
+		printf(", mode=%s", data[1] ? "max" : "high");
 	printf("\n");
 
 	/*
@@ -853,6 +853,50 @@ static void dump_sector (__u16 *w)
 	}
 }
 
+static __u64 get_start_lba (int fd)
+{
+	__u64 lba;
+
+	static struct local_hd_geometry      g;
+	static struct local_hd_big_geometry bg;
+
+	if (!ioctl(fd, HDIO_GETGEO_BIG, &bg)) {
+		lba = bg.start;
+	} else if (!ioctl(fd, HDIO_GETGEO, &g)) {
+		lba = g.start;
+	} else {
+		int err = errno;
+		perror(" HDIO_GETGEO failed: cannot determine correct LBA offset, aborting.");
+		exit(err);
+	}
+	return lba;
+}
+
+static int abort_if_not_full_device (int fd, __u64 lba, const char *devname)
+{
+	__u64 start = get_start_lba(fd);
+
+	char *fdevname = strdup(devname);
+	int i, shortened = 0;
+
+	for (i = strlen(fdevname); --i > 2 && (fdevname[i] >= '0' && fdevname[i] <= '9');) {
+		fdevname[i] = '\0';
+		shortened = 1;
+	}
+
+	if (!shortened)
+		fdevname = "the full disk";
+
+	if (start == 0ULL)
+		return 0;
+	fprintf(stderr, "Device %s has non-zero LBA starting offset of %llu.\n", devname, start);
+	fprintf(stderr, "Please use an absolute LBA with the /dev/ entry for the full device, rather than a partition name.\n");
+	fprintf(stderr, "%s is probably a partition of %s (?)\n", devname, fdevname);
+	fprintf(stderr, "The absolute LBA of sector %llu from %s should be %llu\n", lba, devname, start + lba);
+	fprintf(stderr, "Aborting.\n");
+	exit(EINVAL);
+}
+
 static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 {
 	int err = 0;
@@ -896,12 +940,13 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	return max;
 }
 
-static int do_make_bad_sector (int fd, __u16 *id, __u64 lba)
+static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname)
 {
 	int err = 0, has_write_unc;
 	struct hdio_taskfile *r;
 	const char *flagged;
 
+	abort_if_not_full_device(fd, lba, devname);
 	r = malloc(sizeof(struct hdio_taskfile) + 520);
 	if (!r) {
 		err = errno;
@@ -942,12 +987,13 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba)
 	return err;
 }
 
-static int do_write_sector (int fd, __u64 lba)
+static int do_write_sector (int fd, __u64 lba, const char *devname)
 {
 	int err = 0;
 	__u8 ata_op;
 	struct hdio_taskfile *r;
 
+	abort_if_not_full_device(fd, lba, devname);
 	r = malloc(sizeof(struct hdio_taskfile) + 512);
 	if (!r) {
 		err = errno;
@@ -974,12 +1020,13 @@ static int do_write_sector (int fd, __u64 lba)
 	return err;
 }
 
-static int do_read_sector (int fd, __u64 lba)
+static int do_read_sector (int fd, __u64 lba, const char *devname)
 {
 	int err = 0;
 	__u8 ata_op;
 	struct hdio_taskfile *r;
 
+	abort_if_not_full_device(fd, lba, devname);
 	r = malloc(sizeof(struct hdio_taskfile) + 512);
 	if (!r) {
 		err = errno;
@@ -1399,14 +1446,14 @@ open_ok:
 	if (make_bad_sector) {
 		id = get_identify_data(fd, id);
 		confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
-		err = do_make_bad_sector(fd, id, make_bad_sector_addr);
+		err = do_make_bad_sector(fd, id, make_bad_sector_addr, devname);
 	}
 	if (write_sector) {
 		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
-		err = do_write_sector(fd, write_sector_addr);
+		err = do_write_sector(fd, write_sector_addr, devname);
 	}
 	if (read_sector) {
-		err = do_read_sector(fd, read_sector_addr);
+		err = do_read_sector(fd, read_sector_addr, devname);
 	}
 	if (drq_hsm_error) {
 		id = get_identify_data(fd, id);
