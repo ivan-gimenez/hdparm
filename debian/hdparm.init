@@ -2,7 +2,7 @@
 
 ### BEGIN INIT INFO
 # Provides:          hdparm
-# Required-Start:    mountdevsubfs
+# Required-Start:    mountkernfs
 # Required-Stop:
 # Should-Start:      udev
 # Default-Start:     S
@@ -95,7 +95,7 @@ undo_slow_down_raid_sync()
     echo $raid_speed_limit_max >/proc/sys/dev/raid/speed_limit_max
   fi
 
-  rm -f /var/lock/hdparm-resync.lock
+  rm -f /run/lock/hdparm-resync.lock
 }
 
 isOnBattery() {
@@ -148,7 +148,7 @@ WAS_RUN=0
 
 # Turn off RAID synchronisation if needed and asked for.
 if [ "$raidstat" != 'OK' ] && [ "$RAID_WORKAROUND" = "yes" ]; then
-  exec 200>/var/lock/hdparm-resync.lock
+  exec 200>/run/lock/hdparm-resync.lock
   # Block until lock can be acquired
   flock 200
   slow_down_raid_sync
