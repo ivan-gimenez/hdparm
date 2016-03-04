@@ -1,5 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark S. Lord (c) 1994-1997 -- freely distributable */
+/*          - by Mark S. Lord (c) 1994-1998 -- freely distributable */
 
 #include <unistd.h>
 #include <string.h>
@@ -19,6 +19,8 @@
 #include <linux/fs.h>
 #include <linux/major.h>
 
+#define VERSION "v3.6"
+
 /*
  * For kernels prior to 1.3.61, HDIO_SET_32BIT is HDIO_SET_CHIPSET
  */
@@ -29,17 +31,17 @@
 #endif
 #endif
 
-#define TIMING_MB		32
+#define TIMING_MB		64
 #define TIMING_BUF_MB		1
 #define TIMING_BUF_BYTES	(TIMING_BUF_MB * 1024 * 1024)
-#define TIMING_BUF_COUNT	(TIMING_MB / TIMING_BUF_MB)
+#define TIMING_BUF_COUNT	(timing_MB / TIMING_BUF_MB)
 #define BUFCACHE_FACTOR		2
 
 char *progname;
 static struct hd_driveid id;
 static int verbose = 0, get_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
-static int flagcount = 0, do_flush = 0, is_scsi_hd = 0;;
-static int do_ctimings, do_timings = 0;
+static flagcount = 0, do_flush = 0, is_scsi_hd = 0, is_xt_hd = 0;
+static int do_ctimings, do_timings = 0, old_identity = 0, timing_MB = TIMING_MB;
 
 static unsigned long set_readahead= 0, get_readahead= 0, readahead= 0;     
 static unsigned long set_readonly = 0, get_readonly = 0, readonly = 0;     
@@ -66,7 +68,9 @@ static unsigned long set_standby  = 0, get_standby  = 0, standby  = 0;
 static unsigned long set_xfermode = 0, get_xfermode = 0, xfermode = 0;
 static unsigned long set_lookahead= 0, get_lookahead= 0, lookahead= 0;
 static unsigned long set_prefetch = 0, get_prefetch = 0, prefetch = 0;
+static unsigned long set_defects  = 0, defects = 0;
 static unsigned long set_wcache   = 0, get_wcache   = 0, wcache   = 0;
+static unsigned long set_doorlock = 0, get_doorlock = 0, doorlock = 0;
 static unsigned long set_seagate  = 0, get_seagate  = 0;
 static unsigned long set_standbynow = 0, get_standbynow = 0;
 static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
@@ -96,7 +100,7 @@ static void dump_identity (struct hd_driveid *id)
 {
 	int i;
 
-	printf("\n Model=%.40s, FwRev=%.8s, SerialNo=%.8s", 
+	printf("\n Model=%.40s, FwRev=%.8s, SerialNo=%.20s", 
 		id->model, id->fw_rev, id->serial_no);
 	printf("\n Config={");
 	for (i=0; i<=15; i++) {
@@ -119,10 +123,10 @@ static void dump_identity (struct hd_driveid *id)
 			printf("off");
 	}
 	printf("\n DblWordIO=%s", YN(id->dword_io&1));
-	dmpstr (", maxPIO=",id->tPIO,SlowMedFast,3);
+	printf(", OldPIO=%d", id->tPIO);
 	printf(", DMA=%s", YN(id->capability&1));
 	if (id->capability&1)
-		dmpstr (", maxDMA=",id->tDMA,SlowMedFast,2);
+		printf(", OldDMA=%d", id->tDMA);
 	putchar('\n');
 	if (!(id->field_valid&1))
 		printf(" (maybe):");
@@ -130,7 +134,7 @@ static void dump_identity (struct hd_driveid *id)
 		id->cur_cyls, id->cur_heads, id->cur_sectors, *(int *)&id->cur_capacity0);
 	printf(", LBA=%s", YN(id->capability&2));
 	if (id->capability&2)
-		printf(", LBAsects=%d", id->lba_capacity);
+ 		printf(", LBAsects=%d", id->lba_capacity);
 	if (id->capability&1) {
 		if ((id->field_valid&2) || (id->dma_1word | id->dma_mword))
 			printf("\n ");
@@ -169,9 +173,36 @@ static void dump_identity (struct hd_driveid *id)
 		if (id->field_valid&2) {
 			printf(", tPIO={min:%d,w/IORDY:%d}, PIO modes: ",
 			 id->eide_pio, id->eide_pio_iordy);
-			if (id->eide_pio_modes & 1) printf("mode3 ");
-			if (id->eide_pio_modes & 2) printf("mode4 ");
-			if (id->eide_pio_modes &~3) printf("mode? ");
+			if (id->eide_pio_modes & 1)	printf("mode3 ");
+			if (id->eide_pio_modes & 2)	printf("mode4 ");
+			if (id->eide_pio_modes &~3)	printf("mode? ");
+		}
+		if (id->field_valid&4) {
+			printf("\n UDMA modes: ");
+#ifndef HDIO_OBSOLETE_IDENTITY
+			printf(" (not available: rebuild hdparm with a newer kernel");
+#else
+			if (old_identity) {
+				printf(" (not available from this kernel)");
+			} else {
+				if (id->dma_ultra & 0x100)	printf("*");
+				if (id->dma_ultra & 0x001)	printf("mode0 ");
+				if (id->dma_ultra & 0x200)	printf("*");
+				if (id->dma_ultra & 0x002)	printf("mode1 ");
+				if (id->dma_ultra & 0x400)	printf("*");
+				if (id->dma_ultra & 0x004)	printf("mode2 ");
+				if (id->dma_ultra & 0x800)	printf("*");
+				if (id->dma_ultra & 0x008)	printf("mode3 ");
+				if (id->dma_ultra & 0x1000)	printf("*");
+				if (id->dma_ultra & 0x0010)	printf("mode4 ");
+				if (id->dma_ultra & 0x2000)	printf("*");
+				if (id->dma_ultra & 0x0020)	printf("mode5 ");
+				if (id->dma_ultra & 0x4000)	printf("*");
+				if (id->dma_ultra & 0x0040)	printf("mode6 ");
+				if (id->dma_ultra & 0x8000)	printf("*");
+				if (id->dma_ultra & 0x0080)	printf("mode7 ");
+			}
+#endif
 		}
 	}
 	printf("\n\n");
@@ -183,7 +214,7 @@ void flush_buffer_cache (int fd)
 	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
 		perror("BLKFLSBUF failed");
 #ifdef HDIO_DRIVE_CMD
-	if (is_scsi_hd) {
+	if (is_scsi_hd || is_xt_hd) {
 		sleep(1);
 	} else {
 		if (ioctl(fd, HDIO_DRIVE_CMD, NULL))	/* await completion */
@@ -285,9 +316,14 @@ void time_cache (int fd)
 	correction -= (e1.it_value.tv_sec - e2.it_value.tv_sec)
 	 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
 
-	printf("%2d MB in %5.2f seconds =%5.2f MB/sec\n",
-		(BUFCACHE_FACTOR * TIMING_MB), correction,
-		(BUFCACHE_FACTOR * TIMING_MB) / correction);
+	if ((BUFCACHE_FACTOR * timing_MB) >= correction)  /* more than 1MB/s */
+		printf("%2d MB in %5.2f seconds =%6.2f MB/sec\n",
+			(BUFCACHE_FACTOR * timing_MB), correction,
+			(BUFCACHE_FACTOR * timing_MB) / correction);
+	else
+		printf("%2d MB in %5.2f seconds =%6.2f kB/sec\n",
+			(BUFCACHE_FACTOR * timing_MB), correction,
+			(BUFCACHE_FACTOR * timing_MB) / correction * 1024);
 	correction /= BUFCACHE_FACTOR;
 
 	flush_buffer_cache(fd);
@@ -344,8 +380,12 @@ void time_device (int fd)
 
 	elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
 	 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
-	printf("%2d MB in %5.2f seconds =%5.2f MB/sec\n",
-		TIMING_MB, elapsed, TIMING_MB / elapsed);
+	if (timing_MB >= elapsed)  /* more than 1MB/s */
+		printf("%2d MB in %5.2f seconds =%6.2f MB/sec\n",
+			timing_MB, elapsed, timing_MB / elapsed);
+	else
+		printf("%2d MB in %5.2f seconds =%6.2f kB/sec\n",
+			timing_MB, elapsed, timing_MB / elapsed * 1024);
 
 	if (elapsed <= (correction * 2))
 		printf("Hmm.. suspicious results: probably not enough free memory for a proper test.\n");
@@ -353,8 +393,12 @@ void time_device (int fd)
 	else if (correction != 0.0) {
 		printf(" Estimating raw driver speed: ");
 		elapsed -= correction;
-		printf("%2d MB in %5.2f seconds =%5.2f MB/sec\n",
-			TIMING_MB, elapsed, TIMING_MB / elapsed);
+		if (timing_MB >= elapsed)  /* more than 1MB/s */
+			printf("%2d MB in %5.2f seconds =%6.2f MB/sec\n",
+				timing_MB, elapsed, timing_MB / elapsed);
+		else
+			printf("%2d MB in %5.2f seconds =%6.2f kB/sec\n",
+				timing_MB, elapsed, timing_MB / elapsed * 1024);
 	}
 #endif
 quit:
@@ -366,6 +410,14 @@ void no_scsi (void)
 {
 	if (is_scsi_hd) {
 		fputs (" operation not supported on SCSI disks\n", stderr);
+		exit(EINVAL);
+	}
+}
+
+void no_xt (void)
+{
+	if (is_xt_hd) {
+		fputs (" operation not supported on XT disks\n", stderr);
 		exit(EINVAL);
 	}
 }
@@ -447,12 +499,18 @@ static void interpret_xfermode (unsigned int xfermode)
 		case 38:
 		case 39:	printf("multiword DMA mode%d", xfermode-32);
 				break;
+		case 64:
+		case 65:
+		case 66:
+		case 67:
+		case 68:
+		case 69:
+		case 70:
+		case 71:	printf("UltraDMA mode%d", xfermode-64);
+				break;
 		default:
-			if ((xfermode & 0x78) == 64)
-				printf("reserved mode%d", xfermode-64);
-			else
 				printf("unknown, probably not valid");
-			break;
+				break;
 	}
 	printf(")\n");
 }
@@ -471,13 +529,30 @@ void process_dev (char *devname)
 		exit(errno);
 	}
 
+#ifdef SCSI_DISK0_MAJOR
+	if ((major(stat_buf.st_rdev) == SCSI_DISK0_MAJOR) 
+	 || (major(stat_buf.st_rdev) == SCSI_DISK1_MAJOR) 
+	 || (major(stat_buf.st_rdev) == SCSI_DISK2_MAJOR) 
+	 || (major(stat_buf.st_rdev) == SCSI_DISK3_MAJOR) 
+	 || (major(stat_buf.st_rdev) == SCSI_DISK4_MAJOR) 
+	 || (major(stat_buf.st_rdev) == SCSI_DISK5_MAJOR) 
+	 || (major(stat_buf.st_rdev) == SCSI_DISK6_MAJOR) 
+	 || (major(stat_buf.st_rdev) == SCSI_DISK7_MAJOR) 
+#else
 	if ((major(stat_buf.st_rdev) == SCSI_DISK_MAJOR) 
-#ifdef MD_MAJOR
-		|| (major(stat_buf.st_rdev) == MD_MAJOR)
 #endif
-							) 
+#ifdef MD_MAJOR
+	 || (major(stat_buf.st_rdev) == MD_MAJOR)
+#endif
+	) 
 		is_scsi_hd = 1;
 	else
+#ifdef XT_DISK_MAJOR
+	if (major(stat_buf.st_rdev) == XT_DISK_MAJOR) {
+		is_xt_hd = 1;
+		timing_MB = 2;
+	} else
+#endif
 		if (major(stat_buf.st_rdev) != IDE0_MAJOR
 		 && major(stat_buf.st_rdev) != IDE1_MAJOR
 #ifdef IDE2_MAJOR
@@ -486,8 +561,14 @@ void process_dev (char *devname)
 #ifdef IDE3_MAJOR
 		 && major(stat_buf.st_rdev) != IDE3_MAJOR
 #endif
+#ifdef IDE4_MAJOR
+		 && major(stat_buf.st_rdev) != IDE4_MAJOR
+#endif
+#ifdef IDE5_MAJOR
+		 && major(stat_buf.st_rdev) != IDE5_MAJOR
+#endif
 	                                                      ) {
-		fprintf(stderr,"%s is not a hard disk.\n",devname);
+		fprintf(stderr,"%s not supported by hdparm\n",devname);
 		exit(EINVAL);
 	}
 
@@ -496,7 +577,6 @@ void process_dev (char *devname)
 		perror(devname);
 		exit(errno);
 	}
-
 	if (!quiet)
 		printf("\n%s:\n", devname);
 	if (set_readahead) {
@@ -508,6 +588,7 @@ void process_dev (char *devname)
 #ifdef HDIO_SET_PIO_MODE
 	if (set_piomode) {
 		no_scsi();
+		no_xt();
 		if (noisy_piomode) {
 			if (piomode == 255)
 				printf(" attempting to auto-tune PIO mode\n");
@@ -521,6 +602,7 @@ void process_dev (char *devname)
 #ifdef HDIO_SET_32BIT
 	if (set_io32bit) {
 		no_scsi();
+		no_xt();
 		if (get_io32bit)
 			printf(" setting 32-bit I/O support flag to %ld\n", io32bit);
 		if (ioctl(fd, HDIO_SET_32BIT, io32bit)) 
@@ -529,6 +611,7 @@ void process_dev (char *devname)
 #endif
 	if (set_mult) {
 		no_scsi();
+		no_xt();
 		if (get_mult)
 			printf(" setting multcount to %ld\n", mult);
 		if (ioctl(fd, HDIO_SET_MULTCOUNT, mult)) 
@@ -547,6 +630,7 @@ void process_dev (char *devname)
 	}
 	if (set_unmask) {
 		no_scsi();
+		no_xt();
 		if (get_unmask) {
 			printf(" setting unmaskirq to %ld", unmask);
 			on_off(unmask);
@@ -568,6 +652,7 @@ void process_dev (char *devname)
 #ifdef HDIO_SET_NOWERR
 	if (set_nowerr) {
 		no_scsi();
+		no_xt();
 		if (get_nowerr) {
 			printf(" setting nowerr to %ld", nowerr);
 			on_off(nowerr);
@@ -579,6 +664,7 @@ void process_dev (char *devname)
 #ifdef HDIO_GET_KEEPSETTINGS
 	if (set_keep) {
 		no_scsi();
+		no_xt();
 		if (get_keep) {
 			printf(" setting keep_settings to %ld", keep);
 			on_off(keep);
@@ -588,10 +674,23 @@ void process_dev (char *devname)
 	}
 #endif /* HDIO_GET_KEEPSETTINGS */
 #ifdef HDIO_DRIVE_CMD
+	if (set_doorlock) {
+		unsigned char args[4] = {0,0,0,0};
+		no_scsi();
+		no_xt();
+		args[0] = doorlock ? WIN_DOORLOCK : WIN_DOORUNLOCK;
+		if (get_doorlock) {
+			printf(" setting drive doorlock to %ld", doorlock);
+			on_off(doorlock);
+		}
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+			perror(" HDIO_DRIVE_CMD failed");
+	}
 	if (set_dkeep) {
 		/* lock/unlock the drive's "feature" settings */
 		unsigned char args[4] = {WIN_SETFEATURES,0,0,0};
 		no_scsi();
+		no_xt();
 		if (get_dkeep) {
 			printf(" setting drive keep features to %ld", dkeep);
 			on_off(dkeep);
@@ -600,9 +699,19 @@ void process_dev (char *devname)
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD failed");
 	}
+	if (set_defects) {
+		unsigned char args[4] = {WIN_SETFEATURES,0,0x04,0};
+		no_scsi();
+		args[2] = defects ? 0x04 : 0x84;
+		if (get_prefetch)
+			printf(" setting drive defect-mgmt to %ld\n", defects);
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+			perror(" HDIO_DRIVE_CMD failed");
+	}
 	if (set_prefetch) {
 		unsigned char args[4] = {WIN_SETFEATURES,0,0xab,0};
 		no_scsi();
+		no_xt();
 		args[1] = prefetch;
 		if (get_prefetch)
 			printf(" setting drive prefetch to %ld\n", prefetch);
@@ -612,6 +721,7 @@ void process_dev (char *devname)
 	if (set_xfermode) {
 		unsigned char args[4] = {WIN_SETFEATURES,0,3,0};
 		no_scsi();
+		no_xt();
 		args[1] = xfermode;
 		if (get_xfermode) {
 			printf(" setting xfermode to %ld", xfermode);
@@ -623,6 +733,7 @@ void process_dev (char *devname)
 	if (set_lookahead) {
 		unsigned char args[4] = {WIN_SETFEATURES,0,0,0};
 		no_scsi();
+		no_xt();
 		args[2] = lookahead ? 0xaa : 0x55;
 		if (get_lookahead) {
 			printf(" setting drive read-lookahead to %ld", lookahead);
@@ -634,6 +745,7 @@ void process_dev (char *devname)
 	if (set_wcache) {
 		unsigned char args[4] = {WIN_SETFEATURES,0,0,0};
 		no_scsi();
+		no_xt();
 		args[2] = wcache ? 0x02 : 0x82;
 		if (get_wcache) {
 			printf(" setting drive write-caching to %ld", wcache);
@@ -643,26 +755,33 @@ void process_dev (char *devname)
 			perror(" HDIO_DRIVE_CMD failed");
 	}
 	if (set_standbynow) {
-#define WIN_STANDBYNOW 0x94	/* or 0xE0 */
-		unsigned char args[4] = {WIN_STANDBYNOW,0,0,0};
+#define WIN_STANDBYNOW1 0xE0
+#define WIN_STANDBYNOW2 0x94
+		unsigned char args1[4] = {WIN_STANDBYNOW1,0,0,0};
+		unsigned char args2[4] = {WIN_STANDBYNOW2,0,0,0};
 		no_scsi();
 		if (get_standbynow)
 			printf(" issuing standby command\n");
-		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args1)
+		 && ioctl(fd, HDIO_DRIVE_CMD, &args2))
 			perror(" HDIO_DRIVE_CMD failed");
 	}
 	if (set_sleepnow) {
-#define WIN_SLEEPNOW 0x99	/* or 0xE6 */
-		unsigned char args[4] = {WIN_SLEEPNOW,0,0,0};
+#define WIN_SLEEPNOW1 0xE6
+#define WIN_SLEEPNOW2 0x99
+		unsigned char args1[4] = {WIN_SLEEPNOW1,0,0,0};
+		unsigned char args2[4] = {WIN_SLEEPNOW2,0,0,0};
 		no_scsi();
 		if (get_sleepnow)
 			printf(" issuing sleep command\n");
-		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args1)
+		 && ioctl(fd, HDIO_DRIVE_CMD, &args2))
 			perror(" HDIO_DRIVE_CMD failed");
 	}
 	if (set_seagate) {
 		unsigned char args[4] = {0xfb,0,0,0};
 		no_scsi();
+		no_xt();
 		if (get_seagate)
 			printf(" disabling Seagate auto powersaving mode\n");
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
@@ -671,6 +790,7 @@ void process_dev (char *devname)
 	if (set_standby) {
 		unsigned char args[4] = {WIN_SETIDLE1,standby,0,0};
 		no_scsi();
+		no_xt();
 		if (get_standby) {
 			printf(" setting standby to %ld", standby);
 			interpret_standby(standby);
@@ -690,7 +810,7 @@ void process_dev (char *devname)
 	if (!flagcount)
 		verbose = 1;
 
-	if ((verbose && !is_scsi_hd) || get_mult || get_identity) {
+	if ((verbose && !is_scsi_hd && !is_xt_hd) || get_mult || get_identity) {
 		no_scsi();
 		multcount = -1;
 		if (ioctl(fd, HDIO_GET_MULTCOUNT, &multcount))
@@ -701,8 +821,9 @@ void process_dev (char *devname)
 		}
 	}
 #ifdef HDIO_GET_32BIT
-	if ((verbose && !is_scsi_hd) || get_io32bit) {
+	if ((verbose && !is_scsi_hd && !is_xt_hd) || get_io32bit) {
 		no_scsi();
+		no_xt();
 		if (ioctl(fd, HDIO_GET_32BIT, &parm))
 			perror(" HDIO_GET_32BIT failed");
 		else {
@@ -720,8 +841,9 @@ void process_dev (char *devname)
 		}
 	}
 #endif
-	if ((verbose && !is_scsi_hd) || get_unmask) {
+	if ((verbose && !is_scsi_hd && !is_xt_hd) || get_unmask) {
 		no_scsi();
+		no_xt();
 		if (ioctl(fd, HDIO_GET_UNMASKINTR, &parm))
 			perror(" HDIO_GET_UNMASKINTR failed");
 		else {
@@ -741,8 +863,9 @@ void process_dev (char *devname)
 	}
 #endif
 #ifdef HDIO_GET_KEEPSETTINGS
-	if ((verbose && !is_scsi_hd) || get_keep) {
+	if ((verbose && !is_scsi_hd && !is_xt_hd) || get_keep) {
 		no_scsi();
+		no_xt();
 		if (ioctl(fd, HDIO_GET_KEEPSETTINGS, &parm))
 			perror(" HDIO_GET_KEEPSETTINGS failed");
 		else {
@@ -753,8 +876,9 @@ void process_dev (char *devname)
 #endif /* HDIO_GET_KEEPSETTINGS */
 
 #ifdef HDIO_SET_NOWERR
-	if (verbose || get_nowerr) {
+	if ((verbose && !is_scsi_hd && !is_xt_hd) || get_nowerr) {
 		no_scsi();
+		no_xt();
 		if (ioctl(fd, HDIO_GET_NOWERR, &parm))
 			perror(" HDIO_GET_NOWERR failed");
 		else {
@@ -790,29 +914,33 @@ void process_dev (char *devname)
 	}
 #ifdef HDIO_DRIVE_CMD
 	if (get_powermode) {
-#define WIN_CHECKPOWERMODE	0x98	/* or 0xE5 */
-		unsigned char args[4] = {WIN_CHECKPOWERMODE,0,0,0};
+#define WIN_CHECKPOWERMODE1 0xE5
+#define WIN_CHECKPOWERMODE2 0x98
+		unsigned char args[4] = {WIN_CHECKPOWERMODE1,0,0,0};
 		const char *state;
 		no_scsi();
-		if (ioctl(fd, HDIO_DRIVE_CMD, &args)) {
-			if (errno != EIO || args[0] != 0 || args[1] != 0) {
-				/* perror(" HDIO_DRIVE_CMD failed"); */
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args)
+		 && (args[0] = WIN_CHECKPOWERMODE2) /* try again with 0x98 */
+		 && ioctl(fd, HDIO_DRIVE_CMD, &args)) {
+			if (errno != EIO || args[0] != 0 || args[1] != 0)
 				state = "unknown";
-			} else {
-				state = "sleeping";
-			}
-		} else {
-			if (args[2] == 255)
-				state = "active/idle";
 			else
-				state = "standby";
+				state = "sleeping";
+		} else {
+			state = (args[2] == 255) ? "active/idle" : "standby";
 		} 
 		printf(" drive state is:  %s\n", state);
 	}
 #endif
 	if (get_identity) {
 		no_scsi();
-		if (!(ioctl(fd, HDIO_GET_IDENTITY, &id))) {
+		no_xt();
+#ifdef HDIO_OBSOLETE_IDENTITY
+		if (!(old_identity = ioctl(fd, HDIO_GET_IDENTITY, &id)) || !ioctl(fd, HDIO_OBSOLETE_IDENTITY)) {
+#else
+		if (!ioctl(fd, HDIO_GET_IDENTITY, &id)) {
+			old_identity = 1;
+#endif
 			if (multcount != -1) {
 				id.multsect = multcount;
 				id.multsect_valid |= 1;
@@ -828,10 +956,18 @@ void process_dev (char *devname)
 	if (get_IDentity) {
 		unsigned char args[4+512] = {WIN_IDENTIFY,0,0,1,};
 		no_scsi();
-		if (!(ioctl(fd, HDIO_DRIVE_CMD, &args)))
+		no_xt();
+		if (!(ioctl(fd, HDIO_DRIVE_CMD, &args))) {
+			old_identity = 0;
 			dump_identity((struct hd_driveid *)&args[4]);
-		else
-			perror(" HDIO_DRIVE_CMD failed");
+		} else {
+			args[0] = WIN_PIDENTIFY;
+			if (!(ioctl(fd, HDIO_DRIVE_CMD, &args))) {
+				old_identity = 0;
+				dump_identity((struct hd_driveid *)&args[4]);
+			} else
+				perror(" HDIO_DRIVE_CMD failed");
+		}
 	}
 #endif
 	if (do_ctimings)
@@ -845,7 +981,7 @@ void process_dev (char *devname)
 
 void usage_error (void)
 {
-	fprintf(stderr,"\n%s - get/set hard disk parameters - version 3.3\n\n", progname);
+	fprintf(stderr,"\n%s - get/set hard disk parameters - version %s\n\n", progname, VERSION);
 	fprintf(stderr,"Usage:  %s  [options] [device] ..\n\n", progname);
 	fprintf(stderr,"Options:\n"
 	" -a    get/set fs readahead\n"
@@ -861,6 +997,7 @@ void usage_error (void)
 #ifdef HDIO_SET_DMA
 	" -d  * get/set using_dma flag\n"
 #endif
+	" -D  * enable/disable drive defect-mgmt\n"
 	" -f    flush buffer cache for device on exit\n"
 	" -g    display drive geometry\n"
 	" -h    display terse usage information\n"
@@ -873,6 +1010,7 @@ void usage_error (void)
 #endif
 #ifdef HDIO_DRIVE_CMD
 	" -K  * set drive keep_features_over_reset flag (0/1)\n"
+	" -L  * set drive doorlock (0/1) (removable harddisks only)\n"
 #endif
 	" -m  * get/set multiple sector count\n"
 #ifdef HDIO_SET_NOWERR 
@@ -892,11 +1030,12 @@ void usage_error (void)
 	" -t    perform device read timings\n"
 	" -T    perform cache read timings\n"
 	" -u  * get/set unmaskirq flag (0/1)\n"
-	" -v    default; same as -acdgkmnru (-gr for SCSI)\n"
+	" -v    default; same as -acdgkmnru (-gr for SCSI, -adgr for XT)\n"
+	" -V    display program version and exit immediately\n"
 #ifdef HDIO_DRIVE_CMD
 	" -W  * set drive write-caching flag (0/1) (DANGEROUS)\n"
 	" -X  * set IDE xfer mode (DANGEROUS)\n"
-	" -Y  * put IDE drive in standby mode\n"
+	" -y  * put IDE drive in standby mode\n"
 	" -Y  * put IDE drive to sleep\n"
 	" -Z  * disable Seagate auto-powersaving mode\n"
 #endif
@@ -932,6 +1071,10 @@ int main(int argc, char **argv)
 			while ((c = *p++)) {
 				++flagcount;
 				switch (c) {
+					case 'V':
+						fprintf(stdout, "%s %s\n", progname, VERSION);
+						exit(0);
+						break;
 					case 'v':
 						verbose = 1;
 						break;
@@ -1031,6 +1174,14 @@ int main(int argc, char **argv)
 							fprintf(stderr, "-S: missing value\n");
 						break;
 
+					case 'D':
+						set_defects = noisy;
+						noisy = 1;
+						GET_NUMBER(set_defects,defects);
+						if (!set_defects)
+							fprintf(stderr, "-D: missing value\n");
+						break;
+
 					case 'P':
 						get_prefetch = noisy;
 						noisy = 1;
@@ -1069,6 +1220,18 @@ int main(int argc, char **argv)
 							lookahead = *p++ - '0';
 						} else
 							fprintf(stderr, "-A: missing value (0/1)\n");
+						break;
+
+					case 'L':
+						get_doorlock = noisy;
+						noisy = 1;
+						if (!*p && argc && isdigit(**argv))
+							p = *argv++, --argc;
+						if (*p == '0' || *p == '1') {
+							set_doorlock = 1;
+							doorlock = *p++ - '0';
+						} else
+							fprintf(stderr, "-L: missing value (0/1)\n");
 						break;
 
 					case 'W':
