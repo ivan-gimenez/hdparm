@@ -1,3 +1,14 @@
+hdparm-7.3
+	- fixed spelling of --drq-hsm-error in -h output
+	- fixed SG_IO CDB[2] bits for better SAT compliance
+	- fixed version number (v7.2 has "7.1" as version, doh!)
+	- added #ifdef around use of BLKGETSIZE64
+	- manpage updated
+hdparm-7.2
+	- tweak -C
+	- added more debug info from --verbose
+	- added --drq-hsm-error to test libata EH (VERY DANGEROUS, do not use)
+	- fixed breakage when used with old IDE driver
 hdparm-7.1
 	- big-endian fixes for -I, --Istdin, --Istdout
 	- cody tidying in sgio.c
