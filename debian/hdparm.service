@@ -1,0 +1,16 @@
+[Unit]
+Description=Get/set SATA/IDE device parameters
+DefaultDependencies=no
+Before=shutdown.target
+Conflicts=shutdown.target
+RequiresMountsFor=/run/lock
+After=systemd-udevd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/etc/init.d/hdparm start
+ExecStop=/etc/init.d/hdparm stop
+
+[Install]
+WantedBy=sysinit.target
